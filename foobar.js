@@ -66,6 +66,7 @@ function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
             new_file.close();
             print("Extracted tile: " + count.toString());
             pos += tile_bytes;
+            
         }
     }
 
@@ -94,14 +95,7 @@ function convert_tiles(my_rom)
             }
             else
             {
-                if (data === "2" || data === "3")
-                {
-                    temp.push(1);
-                }
-                if (data === "0" || data === "1")
-                {
-                    temp.push(0);
-                }
+                temp.push(parseInt(data));
             }
          }
 
@@ -112,20 +106,28 @@ function convert_tiles(my_rom)
         }
 
         let new_file = storage.openFile("/ext/rom_data/tile_" + i.toString() + ".txt", "w", "create_always");
-        for (let row = 0; row < 8; row += 2)
+        for (let row = 0; row < 3; row++)
         {
-            for (let col = 0; col < 8; col += 2)
+            for (let col = 0; col < 6; col++)
             {
                 let tile = [new_tile[row][col], new_tile[row][col + 1], new_tile[row + 1][col], new_tile[row + 1][col + 1]];
-                new_file.write(math.trunc(mean(tile)).toString());
+                if (math.trunc(mean(tile)) === 0 || math.trunc(mean(tile)) === 1)
+                {
+                    new_file.write("0");
+                }
+
+                else
+                {
+                    new_file.write("1");
+                }
             }
             new_file.write("\n");
         }
-
+        new_file.close()
         print("Converted tile: " + i.toString());
-    }
 
-    storage.rmrf("/ext/temp_rom_data")
+        file.close()
+    }
 }
 
 let tile_size = 8;
@@ -136,6 +138,8 @@ print("Extracting tiles.");
 extract_tiles(my_rom, ranges, tile_size, tile_bytes);
 print("Converting tiles.");
 convert_tiles(my_rom, ranges);
+print("Removing temp files.");
+storage.rmrf("/ext/temp_rom_data")
 
 //let gui = furi_record_open("gui");
 //let canvas = gui_direct_draw_acquire(gui);
