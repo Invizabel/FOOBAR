@@ -26,7 +26,7 @@ function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
     let palette = [[255,255,255], [192,192,192], [96,96,96], [0,0,0]];
     let count = 0;
 
-    storage.makeDirectory("/ext/temp_rom_data")
+    storage.makeDirectory("/ext/rom_data")
     
     let file = storage.openFile(my_rom, "r", "open_existing");
     
@@ -42,7 +42,7 @@ function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
             file.seekAbsolute(pos);
             let raw = file.read("ascii", tile_bytes);
             let tile = [];
-            let new_file = storage.openFile("/ext/temp_rom_data/tile_" + count.toString() + ".txt", "w", "create_always");
+            let new_file = storage.openFile("/ext/rom_data/tile_" + count.toString() + ".txt", "w", "create_always");
 
 
             for (let y = 0; y < tile_size; y++)
@@ -106,9 +106,9 @@ function convert_tiles(my_rom)
         }
 
         let new_file = storage.openFile("/ext/rom_data/tile_" + i.toString() + ".txt", "w", "create_always");
-        for (let row = 0; row < 3; row++)
+        for (let row = 0; row < 8; row += 2)
         {
-            for (let col = 0; col < 6; col++)
+            for (let col = 0; col < 8; col += 2)
             {
                 let tile = [new_tile[row][col], new_tile[row][col + 1], new_tile[row + 1][col], new_tile[row + 1][col + 1]];
                 if (math.trunc(mean(tile)) === 0 || math.trunc(mean(tile)) === 1)
@@ -136,10 +136,8 @@ let ranges = [[0x8000, 0x87FF], [0x8800, 0x8FFF], [0x9000, 0x97FF]];
 let my_rom = "/ext/kirby.gb";
 print("Extracting tiles.");
 extract_tiles(my_rom, ranges, tile_size, tile_bytes);
-print("Converting tiles.");
-convert_tiles(my_rom, ranges);
-print("Removing temp files.");
-storage.rmrf("/ext/temp_rom_data")
+//print("Converting tiles.");
+//convert_tiles(my_rom, ranges);
 
 //let gui = furi_record_open("gui");
 //let canvas = gui_direct_draw_acquire(gui);
