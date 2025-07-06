@@ -1,25 +1,91 @@
 let storage = require("storage");
 let math = require("math");
 
-function sum(data)
+function logic(my_rom)
 {
-    let hits = 0;
-    for (let i = 0; i < data.length; i++)
+    let hits = [];
+    
+    let file = storage.openFile(my_rom, "r", "open_existing");
+    file.seekAbsolute(0x0149);
+    for (let i = 0; i < 256; i++)
     {
-        if (typeof data[i] === "number")
+        file.seekRelative(1);
+        let raw = file.read("ascii",1);
+        let data = raw.charCodeAt(0).toString(16).toUpperCase();
+        
+        if (data === "0")
         {
-            hits += data[i];
+            hits.push("NOP");
+        }
+
+        if (data === "1")
+        {
+            let temp = "LD ";
+            file.seekRelative(1);
+            let raw = file.read("ascii",1);
+            temp += raw.charCodeAt(0).toString() + " ";
+            file.seekRelative(1);
+            let raw = file.read("ascii",1);
+            temp += raw.charCodeAt(0).toString();
+            hits.push(temp);
+        }
+
+        if (data === "2")
+        {
+            hits.push("LD");
+        }
+
+        if (data === "3")
+        {
+            hits.push("INC");
+        }
+
+        if (data === "4")
+        {
+            hits.push("INC");
+        }
+
+        if (data === "5")
+        {
+            hits.push("DEC");
+        }
+
+        if (data === "6")
+        {
+            let temp = "LD ";
+            file.seekRelative(1);
+            let raw = file.read("ascii",1);
+            temp += raw.charCodeAt(0).toString() + " ";
+            hits.push(temp);
+        }
+
+        if (data === "7")
+        {
+            hits.push("RLCA");
+        }
+
+        if (data === "8")
+        {
+            let temp = "LD ";
+            file.seekRelative(1);
+            let raw = file.read("ascii",1);
+            temp += raw.charCodeAt(0).toString() + " ";
+            file.seekRelative(1);
+            let raw = file.read("ascii",1);
+            temp += raw.charCodeAt(0).toString();
+            hits.push(temp);
+        }
+
+        if (data === "9")
+        {
+            hits.push("ADD");
         }
     }
+    file.close();
     return hits;
 }
 
-function mean(data)
-{
-    return sum(data) / data.length;
-}
-
-function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
+function extract_tiles(my_rom, tile_ranges, tile_size, tile_bytes)
 {
     tile_size = tile_size || 8;
     tile_bytes = tile_bytes || 16;
@@ -30,10 +96,10 @@ function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
     
     let file = storage.openFile(my_rom, "r", "open_existing");
     
-    for (let i = 0; i < ranges.length; i++)
+    for (let i = 0; i < tile_ranges.length; i++)
     {
-        let start = ranges[i][0];
-        let end = ranges[i][1];
+        let start = tile_ranges[i][0];
+        let end = tile_ranges[i][1];
         let pos = start;
 
         while (pos + tile_bytes <= end + 1)
@@ -73,71 +139,18 @@ function extract_tiles(my_rom, ranges, tile_size, tile_bytes)
     file.close();
 }
 
-function convert_tiles(my_rom)
+let my_rom = "/ext/test.gb";
+let hits = logic(my_rom);
+for (let i = 0; i < hits.length; i++)
 {
-    storage.makeDirectory("/ext/rom_data")
-    
-    for (let i = 1; i <= 384; i++)
-    {
-        let new_tile = [];
-        let temp = [];
-        let file = storage.openFile("/ext/temp_rom_data/tile_" + i.toString() + ".txt", "r", "open_existing");
-        for (let j = 0; j < 64; j++)
-        {
-            let data = file.read("ascii", 1);
-            if (j % 8 === 0)
-            {
-                if (temp.length > 0)
-                {
-                    new_tile.push(temp);
-                    temp = [];
-                }
-            }
-            else
-            {
-                temp.push(parseInt(data));
-            }
-         }
-
-        if (temp.length > 0)
-        {
-            new_tile.push(temp);
-            temp = [];
-        }
-
-        let new_file = storage.openFile("/ext/rom_data/tile_" + i.toString() + ".txt", "w", "create_always");
-        for (let row = 0; row < 8; row += 2)
-        {
-            for (let col = 0; col < 8; col += 2)
-            {
-                let tile = [new_tile[row][col], new_tile[row][col + 1], new_tile[row + 1][col], new_tile[row + 1][col + 1]];
-                if (math.trunc(mean(tile)) === 0 || math.trunc(mean(tile)) === 1)
-                {
-                    new_file.write("0");
-                }
-
-                else
-                {
-                    new_file.write("1");
-                }
-            }
-            new_file.write("\n");
-        }
-        new_file.close()
-        print("Converted tile: " + i.toString());
-
-        file.close()
-    }
+    print(hits[i]);
 }
 
 let tile_size = 8;
 let tile_bytes = 16;
-let ranges = [[0x8000, 0x87FF], [0x8800, 0x8FFF], [0x9000, 0x97FF]];
-let my_rom = "/ext/kirby.gb";
-print("Extracting tiles.");
-extract_tiles(my_rom, ranges, tile_size, tile_bytes);
-//print("Converting tiles.");
-//convert_tiles(my_rom, ranges);
+let tile_tile_ranges = [[0x8000, 0x87FF], [0x8800, 0x8FFF], [0x9000, 0x97FF]];
+//print("Extracting tiles.");
+//extract_tiles(my_rom, tile_ranges, tile_size, tile_bytes);
 
 //let gui = furi_record_open("gui");
 //let canvas = gui_direct_draw_acquire(gui);
