@@ -1,1 +1,1 @@
-WIP GB Emulator for Flipper Zero, Kinda!
+WIP GB Emulator for Flipper Zero Game Module, Kinda! :)
