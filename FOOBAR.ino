@@ -804,6 +804,11 @@ uint16_t func_stop()
   return 4;
 }
 
+uint16_t ld_e_immediate()
+{
+  return ld(E, Immediate);
+}
+
 // 16 bit inc / dec affect no flags
 uint16_t inc16(uint16_t a, uint16_t b)
 {
@@ -844,6 +849,11 @@ uint16_t ld16_bc_immediate()
 uint16_t ld_to_mem_bca()
 {
   return ld_to_mem(B,C,A);
+}
+
+uint16_t inc16_b_c()
+{
+  return inc16(B,C);
 }
 
 uint16_t inc_b()
@@ -956,11 +966,17 @@ uint16_t inc_e()
   return inc(E);
 }
 
+uint16_t dec_e()
+{
+  return dec(E);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
   opcodes[0x01] = ld16_bc_immediate;
-  opcodes[0x03] = ld_to_mem_bca;
+  opcodes[0x02] = ld_to_mem_bca;
+  opcodes[0x03] = inc16_b_c;
   opcodes[0x04] = inc_b;
   opcodes[0x05] = dec_b;
   opcodes[0x06] = ld_b_immediate;
@@ -987,22 +1003,23 @@ void setup()
   opcodes[0x1A] = ld_from_mem_a_d_e;
   opcodes[0x1B] = dec16_d_e;
   opcodes[0x1C] = inc_e;
+  opcodes[0x1D] = dec_e;
+  opcodes[0x1E] = ld_e_immediate;
 }
 
 void loop()
 {
-  uint16_t smaller_img[128*64];
+  uint16_t smaller_img[1024];
   uint16_t dst_index = 0;
-  for (uint16_t y = 0; y < 128; y += 3)
+  for (uint16_t y = 0; y < sizeof(dpixels); y += 3)
   {
-    for (uint16_t x = 0; x < 64; x += 3)
+    for (uint16_t x = 0; x < sizeof(dpixels[y]); x += 3)
     {
       uint16_t src_index = y * 64 + x;
       smaller_img[dst_index++] = dpixels[src_index];
     }
   }
-
   
-  memcpy(dpixels, smaller_img, sizeof(smaller_img));;
+  memcpy(dpixels, smaller_img, sizeof(smaller_img));
   // put your main code here, to run repeatedly:
 }
