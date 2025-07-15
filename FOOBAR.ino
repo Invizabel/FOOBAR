@@ -3,6 +3,7 @@ uint8_t REG[8];
 uint16_t PC = 0;
 uint16_t SP = 0;
 // Flags and State
+uint16_t dpixels[128*64];
 uint16_t divPrescaler = 0;
 uint16_t timerPrescaler = 0;
 bool timerEnable = false;
@@ -990,5 +991,18 @@ void setup()
 
 void loop()
 {
+  uint16_t smaller_img[128*64];
+  uint16_t dst_index = 0;
+  for (uint16_t y = 0; y < 128; y += 3)
+  {
+    for (uint16_t x = 0; x < 64; x += 3)
+    {
+      uint16_t src_index = y * 64 + x;
+      smaller_img[dst_index++] = dpixels[src_index];
+    }
+  }
+
+  
+  memcpy(dpixels, smaller_img, sizeof(smaller_img));;
   // put your main code here, to run repeatedly:
 }
