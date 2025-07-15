@@ -39,11 +39,27 @@ const uint16_t Immediate = 257;
 const uint16_t BC = 258;
 const uint16_t DE = 259;
 const uint16_t SPr = 260;
+const uint16_t RLC = 1;
+const uint16_t RRC = 2;
+const uint16_t RL  = 3;
+const uint16_t RR  = 4;
+const uint16_t SLA = 5;
+const uint16_t SRA = 6;
+const uint16_t SRL = 7;
 
 typedef uint16_t (*OpcodeFunc)();
 OpcodeFunc opcodes[256];
 
 struct Pair { uint16_t hi, lo; };
+
+struct Flags {
+  bool Z = false; // Zero flag
+  bool N = false; // Subtract flag
+  bool H = false; // Half-carry flag
+  bool C = false; // Carry flag
+};
+
+Flags FLAGS;
 
 uint16_t readMem(uint16_t addr)
 {
@@ -78,14 +94,170 @@ Pair readMem16(uint16_t addr)
   return p;
 }
 
+uint16_t doMBC(uint16_t addr, uint16_t data)
+{
+  switch (ROM[0x147])
+  {
+    // Cartridge Type = ROM[0x147]
+  
+    case 0: // ROM ONLY
+      // do any type 0 carts have switchable ram?
+    break;
+  
+    case 0x01: //  MBC1
+    case 0x02: //  MBC1+RAM
+    case 0x03: //  MBC1+RAM+BATTERY
+    if (addr <= 0x1FFF)
+    {
+      RAMenabled = ((data & 0x0F) == 0xA);
+    }
+    else if (addr <= 0x3FFF)
+    {
+      data &= 0x1F;
+      if (data==0) data = 1; // MBC1 translates bank 0 to bank 1 (apparently regardless of upper bits)
+      // set lowest 5 bits of bank number
+      ROMbank = (ROMbank & 0xE0) | (data & 0x1F);
+      ROMbankoffset = (ROMbank-1) * 0x4000 % sizeof(ROM);
+    }
+    else if (addr <= 0x5fff)
+    {
+      data &= 0x3;
+      if (MBCRamMode == 0)
+      {
+        ROMbank = (ROMbank & 0x1F) | (data << 5);
+        ROMbankoffset = (ROMbank - 1) * 0x4000  % sizeof(ROM);
+      }
+      else
+      {
+        RAMbank = data;
+        RAMbankoffset = RAMbank * 0x2000 - 0xA000;
+      }
+    }
+    else
+    {
+      MBCRamMode = data & 1;
+      if (MBCRamMode == 0)
+      {
+        RAMbank = 0;
+        RAMbankoffset = RAMbank*0x2000 - 0xA000;
+      }
+      else
+      {
+        ROMbank &= 0x1F;
+        ROMbankoffset = (ROMbank - 1) * 0x4000  % sizeof(ROM);
+      }
+    }
+    
+  break;
+
+  case 0x05: //  MBC2
+  case 0x06: //  MBC2+BATTERY
+    
+    if (addr <= 0x1FFF)
+    {
+      if ((addr&0x0100) ==0)
+        RAMenabled = ((data & 0x0F) == 0xA) ;
+    }
+    else if (addr <= 0x3FFF)
+    {
+      data &= 0x0F;
+      if (data == 0) data = 1;
+      ROMbank = data;
+      ROMbankoffset = (ROMbank - 1) * 0x4000 % sizeof(ROM);
+    }
+
+  break;
+
+  // case 0x08: //  ROM+RAM
+  // case 0x09: //  ROM+RAM+BATTERY
+  // case 0x0B: //  MMM01
+  // case 0x0C: //  MMM01+RAM
+  // case 0x0D: //  MMM01+RAM+BATTERY
+  // case 0x0F: //  MBC3+TIMER+BATTERY
+  // case 0x10: //  MBC3+TIMER+RAM+BATTERY
+  case 0x11: //  MBC3
+  case 0x12: //  MBC3+RAM
+  case 0x13: //  MBC3+RAM+BATTERY
+
+    if (addr <= 0x1FFF)
+    {
+      RAMenabled = ((data & 0x0F) == 0xA);
+    }
+    else if (addr <= 0x3FFF)
+    {
+      if (data == 0) data = 1; // allows access to banks 0x20, 0x40, 0x60
+      ROMbank = data & 0x7F;
+      ROMbankoffset = (ROMbank - 1) * 0x4000 % sizeof(ROM);
+    }
+    else if (addr <= 0x5fff)
+    {
+      if (data < 8)
+      {
+        RAMbank=data;
+        RAMbankoffset = RAMbank*0x2000 - 0xA000;
+      }
+      else
+      {
+        // RTC registers here
+      }
+    }
+    else
+    {
+      // RTC latch
+    }
+  break;
+
+  case 0x19: //  MBC5
+  case 0x1A: //  MBC5+RAM
+  case 0x1B: //  MBC5+RAM+BATTERY
+  // case 0x1C: //  MBC5+RUMBLE
+  // case 0x1D: //  MBC5+RUMBLE+RAM
+  // case 0x1E: //  MBC5+RUMBLE+RAM+BATTERY
+    if (addr <= 0x1FFF)
+    {
+      RAMenabled = ((data & 0x0F) == 0xA);
+    }
+    else if (addr <= 0x2FFF)
+    {
+      // Allows access to bank 0
+      ROMbank &= 0x100;
+      ROMbank |= data;
+      ROMbankoffset = (ROMbank - 1)*  0x4000;
+      while (ROMbankoffset>sizeof(ROM)) ROMbankoffset -= sizeof(ROM);
+    }
+    else if (addr <= 0x3FFF)
+    {
+      ROMbank &= 0xFF;
+      if (data & 1) ROMbank += 0x100;
+      ROMbankoffset = (ROMbank-1)*0x4000;
+      while (ROMbankoffset > sizeof(ROM)) ROMbankoffset -= sizeof(ROM);
+    }
+    else if (addr <= 0x5fff)
+    {
+      RAMbank = data & 0x0F;
+      RAMbankoffset = RAMbank*0x2000 - 0xA000;
+    }
+  break;
+
+  // case 0x20: //  MBC6
+  // case 0x22: //  MBC7+SENSOR+RUMBLE+RAM+BATTERY
+  // case 0xFC: //  POCKET CAMERA
+  // case 0xFD: //  BANDAI TAMA5
+  // case 0xFE: //  HuC3
+  // case 0xFF: //  HuC1+RAM+BATTERY
+
+    default: Serial.print("Unimplemented memory controller");
+
+  }
+}
+
 uint16_t writeMem(uint16_t addr, uint16_t data)
 {
-  /*
   if (addr <= 0x7fff)
   { 
     doMBC(addr, data);
-    return;
-  }*/
+    return 0;
+  }
 
   if (addr >= 0xA000 && addr <= 0xBFFF && RAMenabled)
   {
@@ -411,23 +583,10 @@ uint16_t writeMem(uint16_t addr, uint16_t data)
   MEM[addr] = data;
 }
 
-uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
+uint16_t writeMem16(uint16_t addr, uint16_t dataH, uint16_t dataL)
 {
-  if (a == Immediate)
-  {
-    writeMem(readMem(PC + 1) + (readMem( PC + 2) << 8), REG[b]);
-    PC += 3;
-    return 16;
-  }
-  if (c == Immediate)
-  {
-    writeMem((REG[a] << 8)+REG[b], readMem(PC+1));
-    PC += 2;
-    return 12;
-  }
-  writeMem((REG[a] << 8) + REG[b], REG[c]);
-  PC++;
-  return 8;
+  writeMem(addr, dataL);
+  writeMem(addr+1, dataH);
 }
 
 // Messy...
@@ -466,6 +625,210 @@ uint16_t ld16(uint16_t a, uint16_t b, uint16_t c)
   return 8;
 }
 
+uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
+{
+  if (a == Immediate)
+  {
+    writeMem(readMem(PC + 1) + (readMem( PC + 2) << 8), REG[b]);
+    PC += 3;
+    return 16;
+  }
+  if (c == Immediate)
+  {
+    writeMem((REG[a] << 8)+REG[b], readMem(PC+1));
+    PC += 2;
+    return 12;
+  }
+  writeMem((REG[a] << 8) + REG[b], REG[c]);
+  PC++;
+  return 8;
+}
+
+uint16_t incdec_process_8bit(uint16_t a, uint16_t offset)
+{
+    uint16_t result = a + offset;
+    FLAGS.H = !!(((a & 0x0F) + offset) & 0x10);
+    FLAGS.N = offset == -1;
+    FLAGS.Z = ((result & 0xff) == 0);
+    return result;
+}
+
+uint16_t incdec(uint16_t r, uint16_t offset)
+{
+  if (r == HL)
+  {
+    writeMem((REG[H] << 8) + REG[L], incdec_process_8bit(readMem((REG[H] << 8) + REG[L]), offset));
+    PC++;
+    return 12;
+  }
+  REG[r] = incdec_process_8bit(REG[r], offset);
+  PC++;
+  return 4;
+}
+
+uint16_t dec(uint16_t a)
+{
+  return incdec(a, -1);
+}
+
+uint16_t inc(uint16_t a)
+{
+  return incdec(a, 1);
+}
+
+uint16_t ld(uint16_t a, uint16_t b)
+{ 
+  if (b == Immediate)
+  {
+    REG[a] = readMem(PC+1);
+    PC += 2;
+    return 8;
+  }
+  REG[a] = REG[b];
+  PC++;
+  return 4;
+}
+
+uint16_t shift_process(uint16_t op, uint16_t a)
+{
+  uint16_t bit7 = a >> 7, bit0 = a&1;
+
+  switch (op)
+  {
+    case RLC: // Rotate byte left, save carry
+      a = ((a << 1) & 0xff) + bit7;
+      FLAGS.C = !!bit7;
+    break;
+    case RRC: // Rotate byte right, save carry
+      a = ((a >> 1) & 0xff) + (bit0 << 7);
+      FLAGS.C = !!bit0;
+    break;
+    case RL : //Rotate left through carry
+      a = ((a << 1) & 0xff) + FLAGS.C ;
+      FLAGS.C = !!bit7;
+    break;
+    case RR : //Rotate right through carry
+      a = ((a >> 1) & 0xff) + (FLAGS.C << 7);
+      FLAGS.C = !!bit0;
+    break;
+    case SLA: //Shift left
+      a = ((a << 1) & 0xff);
+      FLAGS.C = !!bit7;
+    break;
+    case SRA: //Shift right arithmetic
+      a = ((a >> 1) & 0xff) + (bit7 << 7);
+      FLAGS.C = !!bit0;
+    break;
+    case SRL: //Shift right logical
+      a = ((a >> 1) & 0xff);
+      FLAGS.C = !!bit0;
+    break;
+  }
+
+  FLAGS.N = false;
+  FLAGS.H = false;
+  FLAGS.Z= (a & 0xFF) == 0;
+  return a;
+}
+
+uint16_t shift_fast(uint16_t op, uint16_t a)
+{
+    REG[a] = shift_process(op, REG[a]);
+    FLAGS.Z = false; // Bizarre, but correct
+    PC++;
+    return 4;
+}
+
+uint16_t ld_imm_sp()
+{
+  writeMem16(readMem(PC + 1) + (readMem(PC + 2) << 8), SP >> 8, SP & 0xFF);
+  PC += 3;
+  return 20;
+}
+
+uint16_t addHL(uint16_t a, uint16_t b)
+{
+  if (a == SPr)
+  {
+    uint16_t c = (REG[L] += (SP & 0xFF)) > 255 ? 1:0;
+    uint16_t h = REG[H] + (SP>>8) + c;
+    FLAGS.H = !!(((REG[H] & 0x0F) + ((SP >> 8) & 0x0F) + c) & 0x10);
+    REG[H] = h;
+    FLAGS.C = (h > 255);
+    FLAGS.N = false;
+    PC++;
+    return 8;
+  }
+    uint16_t c = (REG[L]+= REG[b])>255?1:0;
+    uint16_t h = REG[H] + REG[a] + c;
+    FLAGS.H = !!(((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10);
+    REG[H] = h;
+    FLAGS.C = (h > 255);
+    FLAGS.N = false;
+    PC++;
+    return 8;
+}
+
+uint16_t ld_from_mem(uint16_t a, uint16_t b, uint16_t c)
+{
+  if (b == Immediate)
+  {
+    REG[a] = readMem(readMem(PC + 1) + (readMem(PC + 2) << 8));
+    PC+=3;
+    return 16;
+  }
+  REG[a] = readMem((REG[b] << 8) + REG[c]);
+  PC++;
+  return 8;
+}
+
+uint16_t dec16(uint16_t a, uint16_t b)
+{
+  if (a == SPr)
+  {
+    SP--;
+    PC++;
+    return 8;
+  }
+  if (REG[b] ==0) REG[a]--;
+  REG[b]--;
+  PC++;
+  return 8;
+}
+
+uint16_t func_stop()
+{
+  //TODO
+  PC+=2;
+  return 4;
+}
+
+// 16 bit inc / dec affect no flags
+uint16_t inc16(uint16_t a, uint16_t b)
+{
+  if (a == SPr)
+  {
+    SP++;
+    PC++;
+    return 8;
+  }
+  if (REG[b] ==255) REG[a]++;
+  REG[b]++;
+  PC++;
+  return 8;
+}
+
+uint16_t signedOffset(uint16_t b)
+{
+  return (b > 127) ? (b - 256) : b;
+}
+
+uint16_t jr()  // unconditional relative
+{
+  PC += 2 + signedOffset(readMem(PC + 1));
+  return 12;
+}
+
 uint16_t nop()
 {
   PC++;
@@ -479,7 +842,117 @@ uint16_t ld16_bc_immediate()
 
 uint16_t ld_to_mem_bca()
 {
-  ld_to_mem(B,C,A);
+  return ld_to_mem(B,C,A);
+}
+
+uint16_t inc_b()
+{
+  return inc(B);
+}
+
+uint16_t dec_b()
+{
+  return dec(B);
+}
+
+uint16_t ld_b_immediate()
+{
+  return ld(B, Immediate);
+}
+
+uint16_t shift_fast_rlc_a()
+{
+  return shift_fast(RLC, A);
+}
+
+uint16_t add_hl_b_c()
+{
+  return addHL(B, C);
+}
+
+uint16_t ld_from_mem_a_b_c()
+{
+  return ld_from_mem(A, B, C);
+}
+
+uint16_t dec16_b_c()
+{
+  return dec16(B,C);
+}
+
+uint16_t inc_c()
+{
+  return inc(C);
+}
+
+uint16_t dec_c()
+{
+  dec(C);
+}
+
+uint16_t ld_c_immediate()
+{
+  return ld(C, Immediate);
+}
+
+uint16_t shift_fast_rrc_a()
+{
+  return shift_fast(RRC, A);
+}
+
+uint16_t ld16_d_e_immediate()
+{
+  return ld16(D,E,Immediate);
+}
+
+uint16_t ld_to_mem_d_e_a()
+{
+  return ld_to_mem(D,E,A);
+}
+
+uint16_t inc16_d_e()
+{
+  return inc16(D,E);
+}
+
+uint16_t inc_d()
+{
+  return inc(D);
+}
+
+uint16_t dec_d()
+{
+  return dec(D);
+}
+
+uint16_t ld_d_immediate()
+{
+  return ld(D, Immediate);
+}
+
+uint16_t shift_fast_rl_a()
+{
+  return shift_fast(RL, A);
+}
+
+uint16_t addhl_d_e()
+{
+  return addHL(D,E); //ADD HL, DE;
+}
+
+uint16_t ld_from_mem_a_d_e()
+{
+  return ld_from_mem(A, D, E);
+}
+
+uint16_t dec16_d_e()
+{
+  return dec16(D,E);
+}
+
+uint16_t inc_e()
+{
+  return inc(E);
 }
 
 void setup()
@@ -487,6 +960,32 @@ void setup()
   opcodes[0x00] = nop;
   opcodes[0x01] = ld16_bc_immediate;
   opcodes[0x03] = ld_to_mem_bca;
+  opcodes[0x04] = inc_b;
+  opcodes[0x05] = dec_b;
+  opcodes[0x06] = ld_b_immediate;
+  opcodes[0x07] = shift_fast_rlc_a; // rlca
+  opcodes[0x08] = ld_imm_sp; // LD   (nn), SP
+  opcodes[0x09] = add_hl_b_c;
+  opcodes[0x0A] = ld_from_mem_a_b_c;
+  opcodes[0x0B] = dec16_b_c;
+  opcodes[0x0C] = inc_c;
+  opcodes[0x0D] = dec_c;
+  opcodes[0x0E] = ld_c_immediate;
+  opcodes[0x0F] = shift_fast_rrc_a;
+
+  opcodes[0x10] = func_stop;
+  opcodes[0x11] = ld16_d_e_immediate;
+  opcodes[0x12] = ld_to_mem_d_e_a;
+  opcodes[0x13] = inc16_d_e;
+  opcodes[0x14] = inc_d;
+  opcodes[0x15] = dec_d;
+  opcodes[0x16] = ld_d_immediate;
+  opcodes[0x17] = shift_fast_rl_a;
+  opcodes[0x18] = jr;
+  opcodes[0x19] = addhl_d_e; //ADD HL, DE
+  opcodes[0x1A] = ld_from_mem_a_d_e;
+  opcodes[0x1B] = dec16_d_e;
+  opcodes[0x1C] = inc_e;
 }
 
 void loop()
