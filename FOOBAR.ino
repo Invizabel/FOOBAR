@@ -40,13 +40,22 @@ const uint16_t Immediate = 257;
 const uint16_t BC = 258;
 const uint16_t DE = 259;
 const uint16_t SPr = 260;
-const uint16_t RLC = 1;
-const uint16_t RRC = 2;
-const uint16_t RL  = 3;
-const uint16_t RR  = 4;
-const uint16_t SLA = 5;
-const uint16_t SRA = 6;
-const uint16_t SRL = 7;
+const uint8_t  RLC = 1;
+const uint8_t  RRC = 2;
+const uint8_t  RL  = 3;
+const uint8_t  RR  = 4;
+const uint8_t  SLA = 5;
+const uint8_t  SRA = 6;
+const uint8_t  SRL = 7;
+
+const uint8_t ADD = 1;
+const uint8_t ADC = 2;
+const uint8_t SUB = 3;
+const uint8_t SBC = 4;
+const uint8_t AND = 5;
+const uint8_t OR  = 6;
+const uint8_t XOR = 7;
+const uint8_t CP  = 8;
 
 typedef uint16_t (*OpcodeFunc)();
 OpcodeFunc opcodes[256];
@@ -982,6 +991,80 @@ uint16_t halt()
   return 4;
 }
 
+
+uint16_t ALU_process_8bit(uint16_t op, uint16_t b)
+{
+  uint16_t result = REG[A];
+  FLAGS.N = false;
+  switch (op)
+  {
+    case ADD: 
+      FLAGS.H = !!(((REG[A] & 0x0F) + (b & 0x0F)) & 0x10);
+      result += b;
+    break;
+    case ADC:
+      FLAGS.H = !!(((REG[A] & 0x0F) + (b & 0x0F) + FLAGS.C) & 0x10);
+      result += b + FLAGS.C;
+    break;
+    case SUB: 
+      result -= b;
+      FLAGS.N = true;
+      FLAGS.H = !!(((REG[A] & 0x0F) - (b & 0x0F)) & 0x10);
+    break;
+
+    case CP:
+      result -= b;
+      FLAGS.N = true;
+      FLAGS.H = !!(((REG[A] & 0x0F) - (b & 0x0F)) & 0x10);
+      FLAGS.Z = ((result & 0xff) == 0);
+      FLAGS.C = result > 255 || result < 0;
+    return REG[A];
+    case SBC:
+      result -= b + FLAGS.C;
+      FLAGS.N = true;
+      FLAGS.H = !!(((REG[A] & 0x0F) - (b & 0x0F) - FLAGS.C) & 0x10);
+    break;
+    case AND:
+      result &= b;
+      FLAGS.H = true;
+    break;
+    case OR:
+      result |= b;
+      FLAGS.H = false;
+    break;
+    case XOR: 
+      result ^= b;
+      FLAGS.H = false;
+    break;
+  }
+
+  FLAGS.Z = ((result & 0xff) == 0);
+  FLAGS.C = result > 255 || result < 0;
+
+  return result & 0xFF;
+}
+
+uint16_t ALU(uint16_t op, uint16_t a, uint16_t b)
+{
+  if (b == Immediate)
+  {
+    REG[A] = ALU_process_8bit(op, readMem(PC + 1));
+    PC += 2;
+    return 8;
+  }
+  
+  if (b == HL)
+  {
+    REG[A] = ALU_process_8bit(op, readMem((REG[H] << 8) + REG[L]));
+    PC++;
+    return 8;
+  }
+  
+  REG[A] = ALU_process_8bit(op, REG[b]);
+  PC++;
+  return 4;
+}
+
 uint16_t nop()
 {
   PC++;
@@ -1557,6 +1640,86 @@ uint16_t ld_a_a()
   return ld(A, A);
 }
 
+uint16_t alu_add_a_b()
+{
+  return ALU(ADD, A, B);
+}
+
+uint16_t alu_add_a_c()
+{
+  return ALU(ADD, A, C);
+}
+
+uint16_t alu_add_a_d()
+{
+  return ALU(ADD, A, D);
+}
+
+uint16_t alu_add_a_e()
+{
+  return ALU(ADD, A, E);
+}
+
+uint16_t alu_add_a_h()
+{
+  return ALU(ADD, A, H);
+}
+
+uint16_t alu_add_a_l()
+{
+  return ALU(ADD, A, L);
+}
+
+uint16_t alu_add_a_hl()
+{
+  return ALU(ADD, A, HL);
+}
+
+uint16_t alu_add_a_a()
+{
+  return ALU(ADD, A, A);
+}
+
+uint16_t alu_adc_a_b()
+{
+  return ALU(ADC, A, B);
+}
+
+uint16_t alu_adc_a_c()
+{
+  return ALU(ADC, A, C);
+}
+
+uint16_t alu_adc_a_d()
+{
+  return ALU(ADC, A, D);
+}
+
+uint16_t alu_adc_a_e()
+{
+  return ALU(ADC, A, E);
+}
+
+uint16_t alu_adc_a_h()
+{
+  return ALU(ADC, A, H);
+}
+
+uint16_t alu_adc_a_l()
+{
+  return ALU(ADC, A, L);
+}
+
+uint16_t alu_adc_a_hl()
+{
+  return ALU(ADC, A, L);
+}
+
+uint16_t alu_adc_a_a()
+{
+  return ALU(ADC, A, L);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
@@ -1693,6 +1856,22 @@ void setup()
   opcodes[0x7D] = ld_a_l;
   opcodes[0x7E] = ld_from_mem_a_h_l;
   opcodes[0x7F] = ld_a_a;
+  opcodes[0x80] = alu_add_a_b;
+  opcodes[0x81] = alu_add_a_c;
+  opcodes[0x82] = alu_add_a_d;
+  opcodes[0x83] = alu_add_a_e;
+  opcodes[0x84] = alu_add_a_h;
+  opcodes[0x85] = alu_add_a_l;
+  opcodes[0x86] = alu_add_a_hl;
+  opcodes[0x87] = alu_add_a_a;
+  opcodes[0x88] = alu_adc_a_b;
+  opcodes[0x89] = alu_adc_a_c;
+  opcodes[0x8A] = alu_adc_a_d;
+  opcodes[0x8B] = alu_adc_a_e;
+  opcodes[0x8C] = alu_adc_a_h;
+  opcodes[0x8D] = alu_adc_a_l;
+  opcodes[0x8E] = alu_adc_a_hl;
+  opcodes[0x8F] = alu_adc_a_a;
 }
 
 void loop()
