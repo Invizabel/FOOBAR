@@ -974,6 +974,14 @@ uint16_t ccf()
   return 4;
 }
 
+uint16_t halt()
+{
+  // if interrupts disabled, stall 1 cycle, skip next instruction and continue
+  if (IME) cpu_halted=true;
+  PC++;
+  return 4;
+}
+
 uint16_t nop()
 {
   PC++;
@@ -1234,6 +1242,321 @@ uint16_t ld_a_immediate()
   return ld(A, Immediate);
 }
 
+uint16_t ld_b_b()
+{
+  return ld(B, B);
+}
+
+uint16_t ld_b_c()
+{
+  return ld(B, C);
+}
+
+uint16_t ld_b_d()
+{
+  return ld(B, D);
+}
+
+uint16_t ld_b_e()
+{
+  return ld(B, E);
+}
+
+uint16_t ld_b_h()
+{
+  return ld(B, H);
+}
+
+uint16_t ld_b_l()
+{
+	return ld(B, L);
+}
+
+uint16_t ld_from_mem_b_h_l()
+{
+  return ld_from_mem(B, H, L);
+}
+
+uint16_t ld_b_a()
+{
+  return ld(B, A);
+}
+
+uint16_t ld_c_b()
+{
+  return ld(C, B);
+}
+
+uint16_t ld_c_c()
+{
+  return ld(C, C);
+}
+
+uint16_t ld_c_d()
+{
+  return ld(C, D);
+}
+
+uint16_t ld_c_e()
+{
+  return ld(C, E);
+}
+
+uint16_t ld_c_h()
+{
+  return ld(C, H);
+}
+
+uint16_t ld_c_l()
+{
+  return ld(C, L);
+}
+
+uint16_t ld_from_mem_c_h_l()
+{
+  return ld_from_mem(C, H, L);
+}
+
+uint16_t ld_c_a()
+{
+  return ld(C, A);
+}
+
+uint16_t ld_d_b()
+{
+  return ld(D, B);
+}
+
+uint16_t ld_d_c()
+{
+  return ld(D, C);
+}
+
+uint16_t ld_d_d()
+{
+  return ld(D, D);
+}
+
+uint16_t ld_d_e()
+{
+  return ld(D, E);
+}
+
+uint16_t ld_d_h()
+{
+  return ld(D, H);
+}
+
+uint16_t ld_d_l()
+{
+  return ld(D, L);
+}
+
+uint16_t ld_from_mem_d_h_l()
+{
+  return ld_from_mem(D, H, L);
+}
+
+uint16_t ld_d_a()
+{
+  return ld(D, A);
+}
+
+uint16_t ld_e_b()
+{
+  return ld(E, B);
+}
+
+uint16_t ld_e_c()
+{
+  return ld(E, C);
+}
+
+uint16_t ld_e_d()
+{
+  return ld(E, D);
+}
+
+uint16_t ld_e_e()
+{
+  return ld(E, E);
+}
+
+uint16_t ld_e_h()
+{
+  return ld(E, H);
+}
+
+uint16_t ld_e_l()
+{
+  return ld(E, L);
+}
+
+uint16_t ld_from_mem_e_h_l()
+{
+  return ld_from_mem(E, H, L);
+}
+
+uint16_t ld_e_a()
+{
+  return ld(E, A);
+}
+
+uint16_t ld_h_b()
+{
+  return ld(H, B);
+}
+
+uint16_t ld_h_c()
+{
+  return ld(H, C);
+}
+
+uint16_t ld_h_d()
+{
+  return ld(H, D);
+}
+
+uint16_t ld_h_e()
+{
+  return ld(H, E);
+}
+
+uint16_t ld_h_h()
+{
+  return ld(H, H);
+}
+
+uint16_t ld_h_l()
+{
+  return ld(H, L);
+}
+
+uint16_t ld_from_mem_h_h_l()
+{
+  return ld_from_mem(H, H, L);
+}
+
+uint16_t ld_h_a()
+{
+  return ld(H, A);
+}
+
+uint16_t ld_l_b()
+{
+  return ld(L, B);
+}
+
+uint16_t ld_l_c()
+{
+  return ld(L, C);
+}
+
+uint16_t ld_l_d()
+{
+  return ld(L, D);
+}
+
+uint16_t ld_l_e()
+{
+  return ld(L, E);
+}
+
+uint16_t ld_l_h()
+{
+  return ld(L, H);
+}
+
+uint16_t ld_l_l()
+{
+  return ld(L, L);
+}
+
+uint16_t ld_from_mem_l_h_l()
+{
+  ld_from_mem(L, H, L);
+}
+
+uint16_t ld_l_a()
+{
+  return ld(L,A);
+}
+
+uint16_t ld_to_mem_h_l_b()
+{
+  return ld_to_mem(H, L, B);
+}
+
+uint16_t ld_to_mem_h_l_c()
+{
+  return ld_to_mem(H, L, C);
+}
+
+uint16_t ld_to_mem_h_l_d()
+{
+  return ld_to_mem(H, L, D);
+}
+
+uint16_t ld_to_mem_h_l_e()
+{
+  return ld_to_mem(H, L, E);
+}
+
+uint16_t ld_to_mem_h_l_h()
+{
+  return ld_to_mem(H, L, H);
+}
+
+uint16_t ld_to_mem_h_l_l()
+{
+  return ld_to_mem(H,L, L);
+}
+
+uint16_t ld_to_mem_h_l_a()
+{
+  return ld_to_mem(H, L, A);
+}
+
+uint16_t ld_a_b()
+{
+  return ld(A, B);
+}
+
+uint16_t ld_a_c()
+{
+  return ld(A, C);
+}
+
+uint16_t ld_a_d()
+{
+  return ld(A, D);
+}
+
+uint16_t ld_a_e()
+{
+  return ld(A, E);
+}
+
+uint16_t ld_a_h()
+{
+  return ld(A,H);
+}
+
+uint16_t ld_a_l()
+{
+  return ld(A, L);
+}
+
+uint16_t ld_from_mem_a_h_l()
+{
+  return ld_from_mem(A, H, L);
+}
+
+uint16_t ld_a_a()
+{
+  return ld(A, A);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
@@ -1303,6 +1626,73 @@ void setup()
   opcodes[0x3D] = dec_a;
   opcodes[0x3E] = ld_a_immediate;
   opcodes[0x3F] = ccf;
+  
+  opcodes[0x40] = ld_b_b;
+  opcodes[0x41] = ld_b_c;
+  opcodes[0x42] = ld_b_d;
+  opcodes[0x43] = ld_b_e;
+  opcodes[0x44] = ld_b_h;
+  opcodes[0x45] = ld_b_l;
+  opcodes[0x46] = ld_from_mem_b_h_l;
+  opcodes[0x47] = ld_b_a;
+  opcodes[0x48] = ld_c_b;
+  opcodes[0x49] = ld_c_c;
+  opcodes[0x4A] = ld_c_d;
+  opcodes[0x4B] = ld_c_e;
+  opcodes[0x4C] = ld_c_h;
+  opcodes[0x4D] = ld_c_l;
+  opcodes[0x4E] = ld_from_mem_c_h_l;
+  opcodes[0x4F] = ld_c_a;
+  opcodes[0x50] = ld_d_b;
+  opcodes[0x51] = ld_d_c;
+  opcodes[0x52] = ld_d_d;
+  opcodes[0x53] = ld_d_e;
+  opcodes[0x54] = ld_d_h;
+  opcodes[0x55] = ld_d_l;
+  opcodes[0x56] = ld_from_mem_d_h_l;
+  opcodes[0x57] = ld_d_a;
+  opcodes[0x58] = ld_e_b;
+  opcodes[0x59] = ld_e_c;
+  opcodes[0x5A] = ld_e_d;
+  opcodes[0x5B] = ld_e_e;
+  opcodes[0x5C] = ld_e_h;
+  opcodes[0x5D] = ld_e_l;
+  opcodes[0x5E] = ld_from_mem_e_h_l;
+  opcodes[0x5F] = ld_e_a;
+  
+  opcodes[0x60] = ld_h_b;
+  opcodes[0x61] = ld_h_c;
+  opcodes[0x62] = ld_h_d;
+  opcodes[0x63] = ld_h_e;
+  opcodes[0x64] = ld_h_h;
+  opcodes[0x65] = ld_h_l;
+  opcodes[0x66] = ld_from_mem_h_h_l;
+  opcodes[0x67] = ld_h_a;
+  opcodes[0x68] = ld_l_b;
+  opcodes[0x69] = ld_l_c;
+  opcodes[0x6A] = ld_l_d;
+  opcodes[0x6B] = ld_l_e;
+  opcodes[0x6C] = ld_l_h;
+  opcodes[0x6D] = ld_l_l;
+  opcodes[0x6E] = ld_from_mem_l_h_l;
+  opcodes[0x6F] = ld_l_a;
+  
+  opcodes[0x70] = ld_to_mem_h_l_b;
+  opcodes[0x71] = ld_to_mem_h_l_c;
+  opcodes[0x72] = ld_to_mem_h_l_d;
+  opcodes[0x73] = ld_to_mem_h_l_e;
+  opcodes[0x74] = ld_to_mem_h_l_h;
+  opcodes[0x75] = ld_to_mem_h_l_l;
+  opcodes[0x76] = halt;
+  opcodes[0x77] = ld_to_mem_h_l_a;
+  opcodes[0x78] = ld_a_b;
+  opcodes[0x79] = ld_a_c;
+  opcodes[0x7A] = ld_a_d;
+  opcodes[0x7B] = ld_a_e;
+  opcodes[0x7C] = ld_a_h;
+  opcodes[0x7D] = ld_a_l;
+  opcodes[0x7E] = ld_from_mem_a_h_l;
+  opcodes[0x7F] = ld_a_a;
 }
 
 void loop()
