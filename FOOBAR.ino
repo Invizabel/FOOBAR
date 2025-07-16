@@ -835,6 +835,85 @@ uint16_t jr()  // unconditional relative
   return 12;
 }
 
+uint16_t jrNZ()
+{
+  if (FLAGS.Z)
+  {
+    PC+=2;
+    return 8;
+  }
+  
+  PC += 2 + signedOffset(readMem(PC + 1));
+  return 12;
+}
+
+uint16_t ldi(uint16_t a, uint16_t b) //load with increment
+{
+  if (a == HL)
+  {
+    writeMem((REG[H] << 8) + REG[L], REG[A]);
+    if (REG[L]==255) REG[H]++;
+    REG[L]++;
+    
+    PC++;
+    return 8;
+  }
+  
+  REG[A] = readMem((REG[H] << 8) + REG[L]);
+  if (REG[L]==255) REG[H]++;
+  REG[L]++;
+
+  PC++;
+  return 8;
+}
+
+uint16_t daa()
+{
+  //http://gbdev.gg8.se/wiki/articles/DAA
+
+  if (FLAGS.N)
+  {
+    if (FLAGS.C) REG[A] -= 0x60;
+    if (FLAGS.H) REG[A] -= 0x06;
+  }
+  else 
+  {
+    if (REG[A] > 0x99 || FLAGS.C)
+    {
+      REG[A] += 0x60;
+      FLAGS.C = true;
+    }
+    if ((REG[A] & 0x0f)> 0x09 || FLAGS.H) REG[A] += 0x06;
+  }
+
+  FLAGS.Z = REG[A] == 0;
+  FLAGS.H = false;
+
+  PC++;
+  return 4;
+}
+
+uint16_t jrZ()
+{
+  if (!FLAGS.Z)
+  {
+    PC += 2;
+    return 8;
+  }
+ 
+  PC += 2 + signedOffset(readMem(PC + 1));
+  return 12;
+}
+
+uint16_t cpl()
+{
+  REG[A] = ~REG[A];
+  FLAGS.N = true;
+  FLAGS.H = true;
+  PC++;
+  return 4;
+}
+
 uint16_t nop()
 {
   PC++;
@@ -971,6 +1050,71 @@ uint16_t dec_e()
   return dec(E);
 }
 
+uint16_t shift_fast_rr_a()
+{
+  return shift_fast(RR, A);
+}
+
+uint16_t ld16_h_l_immediate()
+{
+  return ld16(H,L,Immediate);
+}
+
+uint16_t ldi_hl_a()
+{
+  return ldi(HL, A);
+}
+
+uint16_t inc16_h_l()
+{
+  return inc16(H, L);
+}
+
+uint16_t inc_h()
+{
+  return inc(H);
+}
+
+uint16_t dec_h()
+{
+  return dec(H);
+}
+
+uint16_t ld_h_immediate()
+{
+  return ld(H, Immediate);
+}
+
+uint16_t addhl_h_l()
+{
+  return addHL(H, L);
+}
+
+uint16_t ldi_a_hl()
+{
+  return ldi(A, HL);
+}
+
+uint16_t dec16_h_l()
+{
+  return dec16(H, L);
+}
+
+uint16_t inc_l()
+{
+  return inc(L);
+}
+
+uint16_t dec_l()
+{
+  return dec(L);
+}
+
+uint16_t ld_l_immediate()
+{
+  return ld(L, Immediate);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
@@ -1005,6 +1149,24 @@ void setup()
   opcodes[0x1C] = inc_e;
   opcodes[0x1D] = dec_e;
   opcodes[0x1E] = ld_e_immediate;
+  opcodes[0x1F] = shift_fast_rr_a;
+
+  opcodes[0x20] = jrNZ;
+  opcodes[0x21] = ld16_h_l_immediate;
+  opcodes[0x22] = ldi_hl_a;
+  opcodes[0x23] = inc16_h_l;
+  opcodes[0x24] = inc_h;
+  opcodes[0x25] = dec_h;
+  opcodes[0x26] = ld_h_immediate;
+  opcodes[0x27] = daa;
+  opcodes[0x28] = jrZ;
+  opcodes[0x29] = addhl_h_l;
+  opcodes[0x2A] = ldi_a_hl;
+  opcodes[0x2B] = dec16_h_l;
+  opcodes[0x2C] = inc_l;
+  opcodes[0x2D] = dec_l;
+  opcodes[0x2E] = ld_l_immediate;
+  opcodes[0x2F] = cpl;
 }
 
 void loop()
