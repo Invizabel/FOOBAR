@@ -914,6 +914,66 @@ uint16_t cpl()
   return 4;
 }
 
+uint16_t jrNC()
+{
+  if (FLAGS.C)
+  {
+    PC += 2;
+    return 8;
+  }
+  
+  PC += 2 + signedOffset(readMem(PC + 1));
+  return 12;
+}
+
+uint16_t ldd(uint16_t a, uint16_t b) // load with decrement
+{ 
+  if (a == HL)
+  {
+    writeMem((REG[H] << 8) + REG[L], REG[A]);
+    if (REG[L]==0) REG[H]--;
+    REG[L]--;
+    PC++;
+    return 8;
+  }
+  
+  REG[A] = readMem((REG[H] << 8) + REG[L]);
+  if (REG[L]==0) REG[H]--;
+  REG[L]--;
+  PC++;
+  return 8;
+}
+
+uint16_t scf()
+{
+  FLAGS.N = false;
+  FLAGS.H = false;
+  FLAGS.C = true;
+  PC++;
+  return 4;
+}
+
+uint16_t jrC()
+{
+  if (!FLAGS.C)
+  {
+    PC += 2;
+    return 8;
+  }
+  
+  PC += 2 + signedOffset(readMem(PC + 1));
+  return 12;
+}
+
+uint16_t ccf()
+{
+  FLAGS.N = false;
+  FLAGS.H = false;
+  FLAGS.C = !FLAGS.C;
+  PC++;
+  return 4;
+}
+
 uint16_t nop()
 {
   PC++;
@@ -1115,6 +1175,65 @@ uint16_t ld_l_immediate()
   return ld(L, Immediate);
 }
 
+uint16_t ld16_spr_immediate()
+{
+  return ld16(SPr, Immediate, 0);
+}
+
+uint16_t ldd_hl_a()
+{
+  return ldd(HL, A);
+}
+uint16_t inc16_spr()
+{
+  return inc16(SPr, 0);
+}
+
+uint16_t inc_hl()
+{
+  return inc(HL);
+}
+
+uint16_t dec_hl()
+{
+  return dec(HL);
+}
+
+uint16_t ld_to_mem_h_l_immediate()
+{
+  return ld_to_mem(H, L, Immediate);
+}
+
+uint16_t addhl_spr()
+{
+  return addHL(SPr, 0);
+}
+
+uint16_t ldd_a_hl()
+{
+  return ldd(A, HL);
+}
+
+uint16_t dec16_spr()
+{
+  return dec16(SPr, 0);
+}
+
+uint16_t inc_a()
+{
+  return inc(A);
+}
+
+uint16_t dec_a()
+{
+  return dec(A);
+}
+
+uint16_t ld_a_immediate()
+{
+  return ld(A, Immediate);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
@@ -1125,7 +1244,7 @@ void setup()
   opcodes[0x05] = dec_b;
   opcodes[0x06] = ld_b_immediate;
   opcodes[0x07] = shift_fast_rlc_a; // rlca
-  opcodes[0x08] = ld_imm_sp; // LD   (nn), SP
+  opcodes[0x08] = ld_imm_sp; // LD (nn), SP
   opcodes[0x09] = add_hl_b_c;
   opcodes[0x0A] = ld_from_mem_a_b_c;
   opcodes[0x0B] = dec16_b_c;
@@ -1167,6 +1286,23 @@ void setup()
   opcodes[0x2D] = dec_l;
   opcodes[0x2E] = ld_l_immediate;
   opcodes[0x2F] = cpl;
+
+  opcodes[0x30] = jrNC;
+  opcodes[0x31] = ld16_spr_immediate;
+  opcodes[0x32] = ldd_hl_a;
+  opcodes[0x33] = inc16_spr;
+  opcodes[0x34] = inc_hl;
+  opcodes[0x35] = dec_hl;
+  opcodes[0x36] = ld_to_mem_h_l_immediate;
+  opcodes[0x37] = scf;
+  opcodes[0x38] = jrC;
+  opcodes[0x39] = addhl_spr;
+  opcodes[0x3A] = ldd_a_hl;
+  opcodes[0x3B] = dec16_spr;
+  opcodes[0x3C] = inc_a;
+  opcodes[0x3D] = dec_a;
+  opcodes[0x3E] = ld_a_immediate;
+  opcodes[0x3F] = ccf;
 }
 
 void loop()
