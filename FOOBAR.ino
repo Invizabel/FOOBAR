@@ -1720,6 +1720,86 @@ uint16_t alu_adc_a_a()
   return ALU(ADC, A, L);
 }
 
+uint16_t alu_sub_a_b()
+{
+  return ALU(SUB, A, B);
+}
+
+uint16_t alu_sub_a_c()
+{
+  return ALU(SUB, A, C);
+}
+
+uint16_t alu_sub_a_d()
+{
+  return ALU(SUB, A, D);
+}
+
+uint16_t alu_sub_a_e()
+{
+  return ALU(SUB, A, E);
+}
+
+uint16_t alu_sub_a_h()
+{
+  return ALU(SUB, A, H);
+}
+
+uint16_t alu_sub_a_l()
+{
+  return ALU(SUB, A, L);
+}
+
+uint16_t alu_sub_a_hl()
+{
+  return ALU(SUB, A, HL);
+}
+
+uint16_t alu_sub_a_a()
+{
+  return ALU(SUB, A, A);
+}
+
+uint16_t alu_sbc_a_b()
+{
+  return ALU(SBC, A, B);
+}
+
+uint16_t alu_sbc_a_c()
+{
+  return ALU(SBC, A, C);
+}
+
+uint16_t alu_sbc_a_d()
+{
+  return ALU(SBC, A, D);
+}
+
+uint16_t alu_sbc_a_e()
+{
+  return ALU(SBC, A, E);
+}
+
+uint16_t alu_sbc_a_h()
+{
+  return ALU(SBC, A, H);
+}
+
+uint16_t alu_sbc_a_l()
+{
+  return ALU(SBC, A, L);
+}
+
+uint16_t alu_sbc_a_hl()
+{
+  return ALU(SBC, A, HL);
+}
+
+uint16_t alu_sbc_a_a()
+{
+  return ALU(SBC, A, A);
+}
+
 void setup()
 {
   opcodes[0x00] = nop;
@@ -1872,10 +1952,24 @@ void setup()
   opcodes[0x8D] = alu_adc_a_l;
   opcodes[0x8E] = alu_adc_a_hl;
   opcodes[0x8F] = alu_adc_a_a;
-}
 
-void loop()
-{
+  opcodes[0x90] = alu_sub_a_b;
+  opcodes[0x91] = alu_sub_a_c;
+  opcodes[0x92] = alu_sub_a_d;
+  opcodes[0x93] = alu_sub_a_e;
+  opcodes[0x94] = alu_sub_a_h;
+  opcodes[0x95] = alu_sub_a_l;
+  opcodes[0x96] = alu_sub_a_hl;
+  opcodes[0x97] = alu_sub_a_a;
+  opcodes[0x98] = alu_sbc_a_b;
+  opcodes[0x99] = alu_sbc_a_c;
+  opcodes[0x9A] = alu_sbc_a_d;
+  opcodes[0x9B] = alu_sbc_a_e;
+  opcodes[0x9C] = alu_sbc_a_h;
+  opcodes[0x9D] = alu_sbc_a_l;
+  opcodes[0x9E] = alu_sbc_a_hl;
+  opcodes[0x9F] = alu_sbc_a_a;
+
   uint16_t smaller_img[1024];
   uint16_t dst_index = 0;
   for (uint16_t y = 0; y < sizeof(dpixels); y += 3)
@@ -1888,5 +1982,9 @@ void loop()
   }
   
   memcpy(dpixels, smaller_img, sizeof(smaller_img));
+}
+
+void loop()
+{
   // put your main code here, to run repeatedly:
 }
