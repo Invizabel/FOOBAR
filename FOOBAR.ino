@@ -1,3 +1,6 @@
+#include <Arduino.h>
+#define UART_BAUD 230400
+
 // Registers and Pointers
 uint8_t REG[8];
 uint16_t PC = 0;
@@ -1980,11 +1983,18 @@ void setup()
       smaller_img[dst_index++] = dpixels[src_index];
     }
   }
+
+  Serial1.begin(UART_BAUD);
+  delay(1000);
   
   memcpy(dpixels, smaller_img, sizeof(smaller_img));
 }
 
 void loop()
 {
+  static const uint8_t payload[] = { 6, 7, 8, 9, 10 };
+
+  // Write all bytes in one call
+  Serial1.write(payload, sizeof(payload));
   // put your main code here, to run repeatedly:
 }
