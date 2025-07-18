@@ -2534,9 +2534,15 @@ void setup()
 
 void loop()
 {
-  
-
-  // Write all bytes in one call
-  //Serial1.write(payload, sizeof(payload));
-  // put your main code here, to run repeatedly:
+  if (Serial1.available() > 0)
+  { 
+    int recv = Serial1.read();
+    //uint8_t cycles = cpu();
+    if (recv >= 0)
+    {
+      uint8_t payload = (uint8_t)recv;
+      Serial1.write(payload); 
+      // put your main code here, to run repeatedly:
+    }
+  }
 }

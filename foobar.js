@@ -22,11 +22,18 @@ while (1)
     let new_data = file.read("ascii",2);
     if (new_data.length === 2)
     {
-        let send = new_data.charCodeAt(0).toString(16).toUpperCase();
-        print(send);
+        let send = parseInt(new_data.charCodeAt(0).toString(16));
+        delay(500);
+        serial.write(send);
+    
+        let vgm_data = serial.readBytes(1,2);
+        if (vgm_data === undefined) continue;
+        let data = Uint8Array(vgm_data);
+        print(data[0]);
     }
-    //let vgm_data = serial.readBytes(1,1000);
-    //if (vgm_data === undefined) continue;
-    //let data = Uint8Array(vgm_data);
-    //print(data[0]);
+
+    else
+    {   
+        serial.end();
+    }
 }
