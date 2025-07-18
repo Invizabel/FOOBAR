@@ -62,6 +62,14 @@ const uint8_t OR  = 6;
 const uint8_t XOR = 7;
 const uint8_t CP  = 8;
 
+// CPU
+uint8_t mode = 0;
+bool coincidence = false;
+bool draw = false;
+uint8_t baseTileOffset;
+bool tileSigned;
+uint16_t tileptr;
+
 typedef uint8_t (*OpcodeFunc)();
 OpcodeFunc opcodes[256];
 
@@ -1253,6 +1261,37 @@ uint8_t callC()
   return call();
 }
 
+uint8_t ldh(uint8_t a, uint8_t b)
+{
+  if (a == A)
+  {
+    // LD A, (FF00 + n)
+    REG[A] = readMem(0xFF00 + readMem(PC + 1));
+    PC += 2;
+    return 12;
+  }
+  
+  // LD (FF00 + n), A
+  writeMem(0xFF00 + readMem(PC + 1), REG[A]);
+  PC += 2;
+  return 12;
+}
+
+uint8_t ldc(uint8_t a, uint8_t b)
+{
+  if (a == A) // LD A, (FF00 + C)
+  {
+    REG[A] = readMem(0xFF00 + REG[C]);
+    PC++;
+    return 8;
+  }
+  
+  //LD   (FF00+C),A
+  writeMem(0xFF00 + REG[C], REG[A]);
+  PC++;
+  return 8;
+}
+
 uint8_t nop()
 {
   PC++;
@@ -2198,20 +2237,45 @@ uint8_t push_d_e()
   return push(D, E);
 }
 
-uint8_t draw()
+uint8_t alu_sbc_a_immediate()
 {
-  uint8_t smaller_img[1024];
-  uint8_t dst_index = 0;
-  for (uint8_t y = 0; y < sizeof(dpixels); y += 3)
+  return ALU(SBC,A,Immediate); 
+}
+
+uint8_t rst_18()
+{
+  return rst(0x18);
+}
+
+uint8_t ldh_immediate_a()
+{
+  return ldh(Immediate, A);
+}
+
+uint8_t pop_h_l()
+{
+  return pop(H, L);
+}
+
+uint8_t ldc_c_a()
+{
+  return ldc(C, A);
+}
+
+uint16_t canvas()
+{
+  uint16_t smaller_img[1024];
+  uint16_t dst_index = 0;
+  for (uint16_t y = 0; y < sizeof(dpixels); y += 3)
   {
-    for (uint8_t x = 0; x < sizeof(dpixels[y]); x += 3)
+    for (uint16_t x = 0; x < sizeof(dpixels[y]); x += 3)
     {
-      uint8_t src_index = y * 64 + x;
+      uint16_t src_index = y * 64 + x;
       smaller_img[dst_index++] = dpixels[src_index];
     }
   }
   
-  memcpy(dpixels, smaller_img, sizeof(smaller_img));
+  //memcpy(dpixels, smaller_img, sizeof(smaller_img));
 }
 
 uint8_t cpu()
@@ -2221,94 +2285,6 @@ uint8_t cpu()
   if (!cpu_halted)
   {
     cycles = opcodes[readMem(PC)]();
-  }
-
-   // DIV  = 0xFF04 //Divider Register (R/W)
-  // TIMA = 0xFF05 //Timer counter (R/W)
-  // TMA  = 0xFF06 //Timer Modulo (R/W)
-  // TAC  = 0xFF07 //Timer Control (R/W)
-
-  //DIV register
-  // Seems to be running very slightly faster than BGB, possibly 
-  // some instructions are returning the wrong number
-  if ((divPrescaler += cycles) > 255)
-  {
-    divPrescaler -= 256;
-    MEM[0xFF04]++;
-  }
-  
-  if (timerEnable)
-  {
-    timerPrescaler -= cycles;
-    while (timerPrescaler < 0)
-    {
-      timerPrescaler += timerLength;
-      if (MEM[0xFF05] ++ == 0xFF)
-      {
-        MEM[0xFF05] = MEM[0xFF06];
-        // Set interrupt flag here
-        MEM[0xFF0F] |= 1 << 2;
-        cpu_halted = false;
-      }
-    }
-  }
-
-    // FF41 - STAT - LCDC Status (R/W)
-  // FF42 - SCY - Scroll Y (R/W)
-  // FF43 - SCX - Scroll X (R/W)
-  // FF44 - LY - LCDC Y-Coordinate (R)
-  // FF45 - LYC - LY Compare (R/W)
-  // FF46 - DMA - DMA Transfer and Start Address (W)
-  // FF47 - BGP - BG Palette Data (R/W) - Non CGB Mode Only
-  // FF48 - OBP0 - Object Palette 0 Data (R/W) - Non CGB Mode Only
-  // FF49 - OBP1 - Object Palette 1 Data (R/W) - Non CGB Mode Only
-  // FF4A - WY - Window Y Position (R/W)
-  // FF4B - WX - Window X Position minus 7 (R/W)
-
-  // Complete scan line takes 456 clks.
-
-  //  Mode 0 H-blank period        - 204 clks
-  //  Mode 1 V-blank period        - 4560 clks
-  //  Mode 2 Reading OAM           - 80 clks
-  //  Mode 3 Reading OAM and VRAM  - 172 clks
-  //
-  //  Mode 2  2_____2_____2_____2_____2_____2___________________2____
-  //  Mode 3  _33____33____33____33____33____33__________________3___
-  //  Mode 0  ___000___000___000___000___000___000________________000
-  //  Mode 1  ____________________________________11111111111111_____
-
-  if (LCD_enabled)
-  {
-    LCD_scan += cycles;
-    
-    uint8_t mode = 0;
-    bool coincidence = false;
-    bool draw = false;
-    
-    if (LCD_scan <= 80)
-    {
-      mode = 2;
-    }
-    else if (LCD_scan <= 252)
-    {
-      mode = 3;
-    }
-    else if (LCD_scan < 456)
-    {
-      draw = (LCD_lastmode != 0);
-      mode = 0;
-    }
-    else
-    {
-      mode = 2;
-      LCD_scan -= 456;
-      MEM[0xFF44] ++;
-      if (MEM[0xFF44] > 153)
-      {
-        MEM[0xFF44] = 0;
-      }
-      coincidence = (MEM[0xFF44] == MEM[0xFF45]);
-    }
   }
 }
 
@@ -2543,6 +2519,13 @@ void setup()
   opcodes[0xD5] = push_d_e;
   opcodes[0xDC] = callC;
   opcodes[0xDD] = unused;
+  opcodes[0xDE] = alu_sbc_a_immediate;
+  opcodes[0xDF] = rst_18;
+
+  opcodes[0xE0] = ldh_immediate_a; // LD (FF00 + n), A
+  opcodes[0xE1] = pop_h_l;
+  opcodes[0xE2] = ldc_c_a; // LD (FF00 + C), A
+  opcodes[0xE3] = unused;
 
   // According to BGB
   MEM[0xFF41] = 1;
