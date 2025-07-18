@@ -4,27 +4,27 @@
 // Registers and Pointers
 uint8_t REG[8];
 uint16_t PC = 0;
-uint16_t SP = 0;
+uint8_t SP = 0;
 // Flags and State
-uint16_t dpixels[128*64];
-uint16_t divPrescaler = 0;
-uint16_t timerPrescaler = 0;
+uint8_t dpixels[128*64];
+uint8_t divPrescaler = 0;
+uint8_t timerPrescaler = 0;
 bool timerEnable = false;
 bool LCD_enabled = false;
-uint16_t timerLength = 1;
+uint8_t timerLength = 1;
 uint8_t LCD_lastmode = 1;
-uint8_t LCD_scan = 0;
+uint16_t LCD_scan = 0;
 bool IME = false; // Interrupt master enable
 bool cpu_halted = false;
 // Memory and ROM
 uint8_t MEM[0x10000];
 uint8_t FirstROMPage[512];
 uint8_t ROM[512];
-uint16_t ROMbank = 1; 
-int32_t ROMbankoffset = ((int32_t)ROMbank - 1) * 0x4000;
+uint8_t ROMbank = 1; 
+uint16_t ROMbankoffset = ((int16_t)ROMbank - 1) * 0x4000;
 uint8_t cartRAM[0x8000]; // some carts have up to 128K of ram?
-uint16_t RAMbank = 0;
-int32_t RAMbankoffset = ((int32_t)RAMbank * 0x2000) - 0xA000;
+uint8_t RAMbank = 0;
+uint16_t RAMbankoffset = ((int16_t)RAMbank * 0x2000) - 0xA000;
 bool RAMenabled=false;
 uint8_t MBCRamMode = 0; //for MBC1
 // Joypad Input
@@ -39,10 +39,10 @@ const uint8_t E = 0b011;
 const uint8_t H = 0b100;
 const uint8_t L = 0b101;
 const uint8_t HL = 0b110;
-const uint16_t Immediate = 257;
-const uint16_t BC = 258;
-const uint16_t DE = 259;
-const uint16_t SPr = 260;
+const uint8_t Immediate = 257;
+const uint8_t BC = 258;
+const uint8_t DE = 259;
+const uint8_t SPr = 260;
 const uint8_t  RLC = 1;
 const uint8_t  RRC = 2;
 const uint8_t  RL  = 3;
@@ -60,10 +60,13 @@ const uint8_t OR  = 6;
 const uint8_t XOR = 7;
 const uint8_t CP  = 8;
 
-typedef uint16_t (*OpcodeFunc)();
+typedef uint8_t (*OpcodeFunc)();
 OpcodeFunc opcodes[256];
 
-struct Pair { uint16_t hi, lo; };
+typedef uint8_t (*OpcodeFunc)();
+OpcodeFunc CBcodes[256];
+
+struct Pair { uint8_t hi, lo; };
 
 struct Flags {
   bool Z = false; // Zero flag
@@ -74,7 +77,7 @@ struct Flags {
 
 Flags FLAGS;
 
-uint16_t readMem(uint16_t addr)
+uint8_t readMem(uint8_t addr)
 {
   if (addr <= 0x3fff) return ROM[addr];
   if (addr <= 0x7fff) return ROM[addr + ROMbankoffset];
@@ -99,7 +102,7 @@ uint16_t readMem(uint16_t addr)
   return MEM[addr];
 }
 
-Pair readMem16(uint16_t addr)
+Pair readMem16(uint8_t addr)
 {
   Pair p;
   p.hi = readMem(addr+1);
@@ -107,7 +110,7 @@ Pair readMem16(uint16_t addr)
   return p;
 }
 
-uint16_t doMBC(uint16_t addr, uint16_t data)
+uint8_t doMBC(uint8_t addr, uint8_t data)
 {
   switch (ROM[0x147])
   {
@@ -264,7 +267,7 @@ uint16_t doMBC(uint16_t addr, uint16_t data)
   }
 }
 
-uint16_t writeMem(uint16_t addr, uint16_t data)
+uint8_t writeMem(uint8_t addr, uint8_t data)
 {
   if (addr <= 0x7fff)
   { 
@@ -544,7 +547,7 @@ uint16_t writeMem(uint16_t addr, uint16_t data)
   //LCD control
   if (addr == 0xFF40)
   {
-    uint16_t cc = data&(1 << 7);
+    uint8_t cc = data&(1 << 7);
     if (LCD_enabled != cc)
     {
       LCD_enabled = !!cc;
@@ -575,8 +578,8 @@ uint16_t writeMem(uint16_t addr, uint16_t data)
   // FF46 - DMA - DMA Transfer and Start Address (W)
   if (addr==0xFF46)
   {
-    uint16_t st = data << 8;
-    for (uint16_t i = 0;i <= 0x9F; i++)
+    uint8_t st = data << 8;
+    for (uint8_t i = 0;i <= 0x9F; i++)
     {
       MEM[0xFE00 + i] = readMem(st + i);
     }
@@ -586,7 +589,7 @@ uint16_t writeMem(uint16_t addr, uint16_t data)
   // disable bootrom
   if (addr==0xFF50)
   {
-    for (uint16_t i = 0; i < 256; i++)
+    for (uint8_t i = 0; i < 256; i++)
     {
       ROM[i] = FirstROMPage[i];
     }
@@ -596,14 +599,14 @@ uint16_t writeMem(uint16_t addr, uint16_t data)
   MEM[addr] = data;
 }
 
-uint16_t writeMem16(uint16_t addr, uint16_t dataH, uint16_t dataL)
+uint8_t writeMem16(uint8_t addr, uint8_t dataH, uint8_t dataL)
 {
   writeMem(addr, dataL);
   writeMem(addr+1, dataH);
 }
 
 // Messy...
-uint16_t ld16(uint16_t a, uint16_t b, uint16_t c)
+uint8_t ld16(uint8_t a, uint8_t b, uint8_t c)
 {
   if (b == Immediate)
   {
@@ -638,7 +641,7 @@ uint16_t ld16(uint16_t a, uint16_t b, uint16_t c)
   return 8;
 }
 
-uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
+uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
 {
   if (a == Immediate)
   {
@@ -657,16 +660,16 @@ uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
   return 8;
 }
 
-uint16_t incdec_process_8bit(uint16_t a, uint16_t offset)
+uint8_t incdec_process_8bit(uint8_t a, uint8_t offset)
 {
-    uint16_t result = a + offset;
+    uint8_t result = a + offset;
     FLAGS.H = !!(((a & 0x0F) + offset) & 0x10);
     FLAGS.N = offset == -1;
     FLAGS.Z = ((result & 0xff) == 0);
     return result;
 }
 
-uint16_t incdec(uint16_t r, uint16_t offset)
+uint8_t incdec(uint8_t r, uint8_t offset)
 {
   if (r == HL)
   {
@@ -679,17 +682,17 @@ uint16_t incdec(uint16_t r, uint16_t offset)
   return 4;
 }
 
-uint16_t dec(uint16_t a)
+uint8_t dec(uint8_t a)
 {
   return incdec(a, -1);
 }
 
-uint16_t inc(uint16_t a)
+uint8_t inc(uint8_t a)
 {
   return incdec(a, 1);
 }
 
-uint16_t ld(uint16_t a, uint16_t b)
+uint8_t ld(uint8_t a, uint8_t b)
 { 
   if (b == Immediate)
   {
@@ -702,9 +705,9 @@ uint16_t ld(uint16_t a, uint16_t b)
   return 4;
 }
 
-uint16_t shift_process(uint16_t op, uint16_t a)
+uint8_t shift_process(uint8_t op, uint8_t a)
 {
-  uint16_t bit7 = a >> 7, bit0 = a&1;
+  uint8_t bit7 = a >> 7, bit0 = a&1;
 
   switch (op)
   {
@@ -744,7 +747,7 @@ uint16_t shift_process(uint16_t op, uint16_t a)
   return a;
 }
 
-uint16_t shift_fast(uint16_t op, uint16_t a)
+uint8_t shift_fast(uint8_t op, uint8_t a)
 {
     REG[a] = shift_process(op, REG[a]);
     FLAGS.Z = false; // Bizarre, but correct
@@ -752,19 +755,19 @@ uint16_t shift_fast(uint16_t op, uint16_t a)
     return 4;
 }
 
-uint16_t ld_imm_sp()
+uint8_t ld_imm_sp()
 {
   writeMem16(readMem(PC + 1) + (readMem(PC + 2) << 8), SP >> 8, SP & 0xFF);
   PC += 3;
   return 20;
 }
 
-uint16_t addHL(uint16_t a, uint16_t b)
+uint8_t addHL(uint8_t a, uint8_t b)
 {
   if (a == SPr)
   {
-    uint16_t c = (REG[L] += (SP & 0xFF)) > 255 ? 1:0;
-    uint16_t h = REG[H] + (SP>>8) + c;
+    uint8_t c = (REG[L] += (SP & 0xFF)) > 255 ? 1:0;
+    uint8_t h = REG[H] + (SP>>8) + c;
     FLAGS.H = !!(((REG[H] & 0x0F) + ((SP >> 8) & 0x0F) + c) & 0x10);
     REG[H] = h;
     FLAGS.C = (h > 255);
@@ -772,8 +775,8 @@ uint16_t addHL(uint16_t a, uint16_t b)
     PC++;
     return 8;
   }
-    uint16_t c = (REG[L]+= REG[b])>255?1:0;
-    uint16_t h = REG[H] + REG[a] + c;
+    uint8_t c = (REG[L]+= REG[b])>255?1:0;
+    uint8_t h = REG[H] + REG[a] + c;
     FLAGS.H = !!(((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10);
     REG[H] = h;
     FLAGS.C = (h > 255);
@@ -782,7 +785,7 @@ uint16_t addHL(uint16_t a, uint16_t b)
     return 8;
 }
 
-uint16_t ld_from_mem(uint16_t a, uint16_t b, uint16_t c)
+uint8_t ld_from_mem(uint8_t a, uint8_t b, uint8_t c)
 {
   if (b == Immediate)
   {
@@ -795,7 +798,7 @@ uint16_t ld_from_mem(uint16_t a, uint16_t b, uint16_t c)
   return 8;
 }
 
-uint16_t dec16(uint16_t a, uint16_t b)
+uint8_t dec16(uint8_t a, uint8_t b)
 {
   if (a == SPr)
   {
@@ -809,20 +812,20 @@ uint16_t dec16(uint16_t a, uint16_t b)
   return 8;
 }
 
-uint16_t func_stop()
+uint8_t func_stop()
 {
   //TODO
   PC+=2;
   return 4;
 }
 
-uint16_t ld_e_immediate()
+uint8_t ld_e_immediate()
 {
   return ld(E, Immediate);
 }
 
 // 16 bit inc / dec affect no flags
-uint16_t inc16(uint16_t a, uint16_t b)
+uint8_t inc16(uint8_t a, uint8_t b)
 {
   if (a == SPr)
   {
@@ -836,18 +839,18 @@ uint16_t inc16(uint16_t a, uint16_t b)
   return 8;
 }
 
-uint16_t signedOffset(uint16_t b)
+uint8_t signedOffset(uint8_t b)
 {
   return (b > 127) ? (b - 256) : b;
 }
 
-uint16_t jr()  // unconditional relative
+uint8_t jr()  // unconditional relative
 {
   PC += 2 + signedOffset(readMem(PC + 1));
   return 12;
 }
 
-uint16_t jrNZ()
+uint8_t jrNZ()
 {
   if (FLAGS.Z)
   {
@@ -859,7 +862,7 @@ uint16_t jrNZ()
   return 12;
 }
 
-uint16_t ldi(uint16_t a, uint16_t b) //load with increment
+uint8_t ldi(uint8_t a, uint8_t b) //load with increment
 {
   if (a == HL)
   {
@@ -879,7 +882,7 @@ uint16_t ldi(uint16_t a, uint16_t b) //load with increment
   return 8;
 }
 
-uint16_t daa()
+uint8_t daa()
 {
   //http://gbdev.gg8.se/wiki/articles/DAA
 
@@ -905,7 +908,7 @@ uint16_t daa()
   return 4;
 }
 
-uint16_t jrZ()
+uint8_t jrZ()
 {
   if (!FLAGS.Z)
   {
@@ -917,7 +920,7 @@ uint16_t jrZ()
   return 12;
 }
 
-uint16_t cpl()
+uint8_t cpl()
 {
   REG[A] = ~REG[A];
   FLAGS.N = true;
@@ -926,7 +929,7 @@ uint16_t cpl()
   return 4;
 }
 
-uint16_t jrNC()
+uint8_t jrNC()
 {
   if (FLAGS.C)
   {
@@ -938,7 +941,7 @@ uint16_t jrNC()
   return 12;
 }
 
-uint16_t ldd(uint16_t a, uint16_t b) // load with decrement
+uint8_t ldd(uint8_t a, uint8_t b) // load with decrement
 { 
   if (a == HL)
   {
@@ -956,7 +959,7 @@ uint16_t ldd(uint16_t a, uint16_t b) // load with decrement
   return 8;
 }
 
-uint16_t scf()
+uint8_t scf()
 {
   FLAGS.N = false;
   FLAGS.H = false;
@@ -965,7 +968,7 @@ uint16_t scf()
   return 4;
 }
 
-uint16_t jrC()
+uint8_t jrC()
 {
   if (!FLAGS.C)
   {
@@ -977,7 +980,7 @@ uint16_t jrC()
   return 12;
 }
 
-uint16_t ccf()
+uint8_t ccf()
 {
   FLAGS.N = false;
   FLAGS.H = false;
@@ -986,7 +989,7 @@ uint16_t ccf()
   return 4;
 }
 
-uint16_t halt()
+uint8_t halt()
 {
   // if interrupts disabled, stall 1 cycle, skip next instruction and continue
   if (IME) cpu_halted=true;
@@ -995,9 +998,9 @@ uint16_t halt()
 }
 
 
-uint16_t ALU_process_8bit(uint16_t op, uint16_t b)
+uint8_t ALU_process_8bit(uint8_t op, uint8_t b)
 {
-  uint16_t result = REG[A];
+  uint8_t result = REG[A];
   FLAGS.N = false;
   switch (op)
   {
@@ -1047,7 +1050,7 @@ uint16_t ALU_process_8bit(uint16_t op, uint16_t b)
   return result & 0xFF;
 }
 
-uint16_t ALU(uint16_t op, uint16_t a, uint16_t b)
+uint8_t ALU(uint8_t op, uint8_t a, uint8_t b)
 {
   if (b == Immediate)
   {
@@ -1068,743 +1071,1238 @@ uint16_t ALU(uint16_t op, uint16_t a, uint16_t b)
   return 4;
 }
 
-uint16_t nop()
+uint8_t ret()
+{
+    Pair s = readMem16(SP);
+    SP += 2;
+    PC = ((uint16_t)s.hi << 8) | s.lo;  // Combine hi and lo into 16-bit
+    return 16;
+}
+
+uint8_t retNZ()
+{
+  if (FLAGS.Z)
+  {
+    PC++;
+    return 8;
+  }
+  ret();
+  return 20;
+}
+
+uint8_t pop(uint8_t a, uint8_t b)
+{
+  if (a == A)
+  {
+    Pair s = readMem16(SP);
+    REG[A] = s.hi; // A = high byte
+    uint16_t f = s.lo & 0xF0; // flags byte
+    FLAGS.Z = (f & (1 << 7)) != 0;
+    FLAGS.N = (f & (1 << 6)) != 0;
+    FLAGS.H = (f & (1 << 5)) != 0;
+    FLAGS.C = (f & (1 << 4)) != 0;
+    SP += 2;
+    PC++;
+    return 12;
+    }
+    
+    else
+    {
+      Pair s = readMem16(SP);
+      REG[a] = s.hi;
+      REG[b] = s.lo;
+      SP += 2;
+      PC++;
+      return 12;
+    }
+}
+
+uint8_t jpNZ()
+{
+  if (FLAGS.Z)
+  {
+    PC += 3;
+    return 12;
+  }
+  
+  PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
+  return 16;
+}
+
+uint8_t jpZ()
+{
+  if (!FLAGS.Z)
+  {
+    PC+=3;
+    return 12;
+  }
+  
+  PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
+  return 16;
+}
+
+uint8_t jp()  // unconditional absolute
+{
+  PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
+  return 16;
+}
+
+uint8_t push(uint8_t a, uint8_t b)
+{
+  if (a == A)
+  {
+    uint8_t flags = (FLAGS.Z << 7) + (FLAGS.N << 6) + (FLAGS.H << 5) + (FLAGS.C << 4);
+    SP -= 2;
+    writeMem16(SP, REG[A], flags);
+    PC++;
+    return 16;
+  }
+  
+  SP -= 2;
+  writeMem16(SP, REG[a], REG[b]);
+  PC++;
+  return 16;
+}
+
+uint8_t call()
+{
+  SP -= 2;
+  uint16_t npc = PC + 3;
+  writeMem16(SP, npc >> 8, npc & 0xFF);
+  PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
+  return 24;
+}
+
+uint8_t callNZ()
+{
+  if (FLAGS.Z)
+  {
+    PC += 3;
+    return 12;
+  }
+  
+  return call();
+}
+
+uint8_t rst(uint8_t a)
+{
+  SP -= 2;
+  uint16_t npc = PC + 1; // datasheets say to push the current program counter, but surely it means the return address
+  writeMem16(SP, npc >> 8, npc & 0xFF);
+  PC = a;
+  return 16;
+}
+
+uint8_t retZ()
+{
+  if (!FLAGS.Z)
+  {
+    PC++;
+    return 8;
+  }
+  
+  ret();
+  return 20;
+}
+
+uint8_t retNC()
+{
+  if (FLAGS.C)
+  {
+    PC++;
+    return 8;
+  }
+  
+  ret();
+  return 20;
+}
+
+uint8_t jpNC()
+{
+  if (FLAGS.C)
+  {
+    PC+=3;
+    return 12;
+  }
+  
+  PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
+  return 16;
+}
+
+uint8_t nop()
 {
   PC++;
   return 4;
 }
 
-uint16_t ld16_bc_immediate()
+uint8_t ld16_bc_immediate()
 {
   return ld16(B,C,Immediate);
 }
 
-uint16_t ld_to_mem_bca()
+uint8_t ld_to_mem_bca()
 {
   return ld_to_mem(B,C,A);
 }
 
-uint16_t inc16_b_c()
+uint8_t inc16_b_c()
 {
   return inc16(B,C);
 }
 
-uint16_t inc_b()
+uint8_t inc_b()
 {
   return inc(B);
 }
 
-uint16_t dec_b()
+uint8_t dec_b()
 {
   return dec(B);
 }
 
-uint16_t ld_b_immediate()
+uint8_t ld_b_immediate()
 {
   return ld(B, Immediate);
 }
 
-uint16_t shift_fast_rlc_a()
+uint8_t shift_fast_rlc_a()
 {
   return shift_fast(RLC, A);
 }
 
-uint16_t add_hl_b_c()
+uint8_t add_hl_b_c()
 {
   return addHL(B, C);
 }
 
-uint16_t ld_from_mem_a_b_c()
+uint8_t ld_from_mem_a_b_c()
 {
   return ld_from_mem(A, B, C);
 }
 
-uint16_t dec16_b_c()
+uint8_t dec16_b_c()
 {
   return dec16(B,C);
 }
 
-uint16_t inc_c()
+uint8_t inc_c()
 {
   return inc(C);
 }
 
-uint16_t dec_c()
+uint8_t dec_c()
 {
   dec(C);
 }
 
-uint16_t ld_c_immediate()
+uint8_t ld_c_immediate()
 {
   return ld(C, Immediate);
 }
 
-uint16_t shift_fast_rrc_a()
+uint8_t shift_fast_rrc_a()
 {
   return shift_fast(RRC, A);
 }
 
-uint16_t ld16_d_e_immediate()
+uint8_t ld16_d_e_immediate()
 {
   return ld16(D,E,Immediate);
 }
 
-uint16_t ld_to_mem_d_e_a()
+uint8_t ld_to_mem_d_e_a()
 {
   return ld_to_mem(D,E,A);
 }
 
-uint16_t inc16_d_e()
+uint8_t inc16_d_e()
 {
   return inc16(D,E);
 }
 
-uint16_t inc_d()
+uint8_t inc_d()
 {
   return inc(D);
 }
 
-uint16_t dec_d()
+uint8_t dec_d()
 {
   return dec(D);
 }
 
-uint16_t ld_d_immediate()
+uint8_t ld_d_immediate()
 {
   return ld(D, Immediate);
 }
 
-uint16_t shift_fast_rl_a()
+uint8_t shift_fast_rl_a()
 {
   return shift_fast(RL, A);
 }
 
-uint16_t addhl_d_e()
+uint8_t addhl_d_e()
 {
   return addHL(D,E); //ADD HL, DE;
 }
 
-uint16_t ld_from_mem_a_d_e()
+uint8_t ld_from_mem_a_d_e()
 {
   return ld_from_mem(A, D, E);
 }
 
-uint16_t dec16_d_e()
+uint8_t dec16_d_e()
 {
   return dec16(D,E);
 }
 
-uint16_t inc_e()
+uint8_t inc_e()
 {
   return inc(E);
 }
 
-uint16_t dec_e()
+uint8_t dec_e()
 {
   return dec(E);
 }
 
-uint16_t shift_fast_rr_a()
+uint8_t shift_fast_rr_a()
 {
   return shift_fast(RR, A);
 }
 
-uint16_t ld16_h_l_immediate()
+uint8_t ld16_h_l_immediate()
 {
   return ld16(H,L,Immediate);
 }
 
-uint16_t ldi_hl_a()
+uint8_t ldi_hl_a()
 {
   return ldi(HL, A);
 }
 
-uint16_t inc16_h_l()
+uint8_t inc16_h_l()
 {
   return inc16(H, L);
 }
 
-uint16_t inc_h()
+uint8_t inc_h()
 {
   return inc(H);
 }
 
-uint16_t dec_h()
+uint8_t dec_h()
 {
   return dec(H);
 }
 
-uint16_t ld_h_immediate()
+uint8_t ld_h_immediate()
 {
   return ld(H, Immediate);
 }
 
-uint16_t addhl_h_l()
+uint8_t addhl_h_l()
 {
   return addHL(H, L);
 }
 
-uint16_t ldi_a_hl()
+uint8_t ldi_a_hl()
 {
   return ldi(A, HL);
 }
 
-uint16_t dec16_h_l()
+uint8_t dec16_h_l()
 {
   return dec16(H, L);
 }
 
-uint16_t inc_l()
+uint8_t inc_l()
 {
   return inc(L);
 }
 
-uint16_t dec_l()
+uint8_t dec_l()
 {
   return dec(L);
 }
 
-uint16_t ld_l_immediate()
+uint8_t ld_l_immediate()
 {
   return ld(L, Immediate);
 }
 
-uint16_t ld16_spr_immediate()
+uint8_t ld16_spr_immediate()
 {
   return ld16(SPr, Immediate, 0);
 }
 
-uint16_t ldd_hl_a()
+uint8_t ldd_hl_a()
 {
   return ldd(HL, A);
 }
-uint16_t inc16_spr()
+uint8_t inc16_spr()
 {
   return inc16(SPr, 0);
 }
 
-uint16_t inc_hl()
+uint8_t inc_hl()
 {
   return inc(HL);
 }
 
-uint16_t dec_hl()
+uint8_t dec_hl()
 {
   return dec(HL);
 }
 
-uint16_t ld_to_mem_h_l_immediate()
+uint8_t ld_to_mem_h_l_immediate()
 {
   return ld_to_mem(H, L, Immediate);
 }
 
-uint16_t addhl_spr()
+uint8_t addhl_spr()
 {
   return addHL(SPr, 0);
 }
 
-uint16_t ldd_a_hl()
+uint8_t ldd_a_hl()
 {
   return ldd(A, HL);
 }
 
-uint16_t dec16_spr()
+uint8_t dec16_spr()
 {
   return dec16(SPr, 0);
 }
 
-uint16_t inc_a()
+uint8_t inc_a()
 {
   return inc(A);
 }
 
-uint16_t dec_a()
+uint8_t dec_a()
 {
   return dec(A);
 }
 
-uint16_t ld_a_immediate()
+uint8_t ld_a_immediate()
 {
   return ld(A, Immediate);
 }
 
-uint16_t ld_b_b()
+uint8_t ld_b_b()
 {
   return ld(B, B);
 }
 
-uint16_t ld_b_c()
+uint8_t ld_b_c()
 {
   return ld(B, C);
 }
 
-uint16_t ld_b_d()
+uint8_t ld_b_d()
 {
   return ld(B, D);
 }
 
-uint16_t ld_b_e()
+uint8_t ld_b_e()
 {
   return ld(B, E);
 }
 
-uint16_t ld_b_h()
+uint8_t ld_b_h()
 {
   return ld(B, H);
 }
 
-uint16_t ld_b_l()
+uint8_t ld_b_l()
 {
-	return ld(B, L);
+  return ld(B, L);
 }
 
-uint16_t ld_from_mem_b_h_l()
+uint8_t ld_from_mem_b_h_l()
 {
   return ld_from_mem(B, H, L);
 }
 
-uint16_t ld_b_a()
+uint8_t ld_b_a()
 {
   return ld(B, A);
 }
 
-uint16_t ld_c_b()
+uint8_t ld_c_b()
 {
   return ld(C, B);
 }
 
-uint16_t ld_c_c()
+uint8_t ld_c_c()
 {
   return ld(C, C);
 }
 
-uint16_t ld_c_d()
+uint8_t ld_c_d()
 {
   return ld(C, D);
 }
 
-uint16_t ld_c_e()
+uint8_t ld_c_e()
 {
   return ld(C, E);
 }
 
-uint16_t ld_c_h()
+uint8_t ld_c_h()
 {
   return ld(C, H);
 }
 
-uint16_t ld_c_l()
+uint8_t ld_c_l()
 {
   return ld(C, L);
 }
 
-uint16_t ld_from_mem_c_h_l()
+uint8_t ld_from_mem_c_h_l()
 {
   return ld_from_mem(C, H, L);
 }
 
-uint16_t ld_c_a()
+uint8_t ld_c_a()
 {
   return ld(C, A);
 }
 
-uint16_t ld_d_b()
+uint8_t ld_d_b()
 {
   return ld(D, B);
 }
 
-uint16_t ld_d_c()
+uint8_t ld_d_c()
 {
   return ld(D, C);
 }
 
-uint16_t ld_d_d()
+uint8_t ld_d_d()
 {
   return ld(D, D);
 }
 
-uint16_t ld_d_e()
+uint8_t ld_d_e()
 {
   return ld(D, E);
 }
 
-uint16_t ld_d_h()
+uint8_t ld_d_h()
 {
   return ld(D, H);
 }
 
-uint16_t ld_d_l()
+uint8_t ld_d_l()
 {
   return ld(D, L);
 }
 
-uint16_t ld_from_mem_d_h_l()
+uint8_t ld_from_mem_d_h_l()
 {
   return ld_from_mem(D, H, L);
 }
 
-uint16_t ld_d_a()
+uint8_t ld_d_a()
 {
   return ld(D, A);
 }
 
-uint16_t ld_e_b()
+uint8_t ld_e_b()
 {
   return ld(E, B);
 }
 
-uint16_t ld_e_c()
+uint8_t ld_e_c()
 {
   return ld(E, C);
 }
 
-uint16_t ld_e_d()
+uint8_t ld_e_d()
 {
   return ld(E, D);
 }
 
-uint16_t ld_e_e()
+uint8_t ld_e_e()
 {
   return ld(E, E);
 }
 
-uint16_t ld_e_h()
+uint8_t ld_e_h()
 {
   return ld(E, H);
 }
 
-uint16_t ld_e_l()
+uint8_t ld_e_l()
 {
   return ld(E, L);
 }
 
-uint16_t ld_from_mem_e_h_l()
+uint8_t ld_from_mem_e_h_l()
 {
   return ld_from_mem(E, H, L);
 }
 
-uint16_t ld_e_a()
+uint8_t ld_e_a()
 {
   return ld(E, A);
 }
 
-uint16_t ld_h_b()
+uint8_t ld_h_b()
 {
   return ld(H, B);
 }
 
-uint16_t ld_h_c()
+uint8_t ld_h_c()
 {
   return ld(H, C);
 }
 
-uint16_t ld_h_d()
+uint8_t ld_h_d()
 {
   return ld(H, D);
 }
 
-uint16_t ld_h_e()
+uint8_t ld_h_e()
 {
   return ld(H, E);
 }
 
-uint16_t ld_h_h()
+uint8_t ld_h_h()
 {
   return ld(H, H);
 }
 
-uint16_t ld_h_l()
+uint8_t ld_h_l()
 {
   return ld(H, L);
 }
 
-uint16_t ld_from_mem_h_h_l()
+uint8_t ld_from_mem_h_h_l()
 {
   return ld_from_mem(H, H, L);
 }
 
-uint16_t ld_h_a()
+uint8_t ld_h_a()
 {
   return ld(H, A);
 }
 
-uint16_t ld_l_b()
+uint8_t ld_l_b()
 {
   return ld(L, B);
 }
 
-uint16_t ld_l_c()
+uint8_t ld_l_c()
 {
   return ld(L, C);
 }
 
-uint16_t ld_l_d()
+uint8_t ld_l_d()
 {
   return ld(L, D);
 }
 
-uint16_t ld_l_e()
+uint8_t ld_l_e()
 {
   return ld(L, E);
 }
 
-uint16_t ld_l_h()
+uint8_t ld_l_h()
 {
   return ld(L, H);
 }
 
-uint16_t ld_l_l()
+uint8_t ld_l_l()
 {
   return ld(L, L);
 }
 
-uint16_t ld_from_mem_l_h_l()
+uint8_t ld_from_mem_l_h_l()
 {
   ld_from_mem(L, H, L);
 }
 
-uint16_t ld_l_a()
+uint8_t ld_l_a()
 {
   return ld(L,A);
 }
 
-uint16_t ld_to_mem_h_l_b()
+uint8_t ld_to_mem_h_l_b()
 {
   return ld_to_mem(H, L, B);
 }
 
-uint16_t ld_to_mem_h_l_c()
+uint8_t ld_to_mem_h_l_c()
 {
   return ld_to_mem(H, L, C);
 }
 
-uint16_t ld_to_mem_h_l_d()
+uint8_t ld_to_mem_h_l_d()
 {
   return ld_to_mem(H, L, D);
 }
 
-uint16_t ld_to_mem_h_l_e()
+uint8_t ld_to_mem_h_l_e()
 {
   return ld_to_mem(H, L, E);
 }
 
-uint16_t ld_to_mem_h_l_h()
+uint8_t ld_to_mem_h_l_h()
 {
   return ld_to_mem(H, L, H);
 }
 
-uint16_t ld_to_mem_h_l_l()
+uint8_t ld_to_mem_h_l_l()
 {
   return ld_to_mem(H,L, L);
 }
 
-uint16_t ld_to_mem_h_l_a()
+uint8_t ld_to_mem_h_l_a()
 {
   return ld_to_mem(H, L, A);
 }
 
-uint16_t ld_a_b()
+uint8_t ld_a_b()
 {
   return ld(A, B);
 }
 
-uint16_t ld_a_c()
+uint8_t ld_a_c()
 {
   return ld(A, C);
 }
 
-uint16_t ld_a_d()
+uint8_t ld_a_d()
 {
   return ld(A, D);
 }
 
-uint16_t ld_a_e()
+uint8_t ld_a_e()
 {
   return ld(A, E);
 }
 
-uint16_t ld_a_h()
+uint8_t ld_a_h()
 {
   return ld(A,H);
 }
 
-uint16_t ld_a_l()
+uint8_t ld_a_l()
 {
   return ld(A, L);
 }
 
-uint16_t ld_from_mem_a_h_l()
+uint8_t ld_from_mem_a_h_l()
 {
   return ld_from_mem(A, H, L);
 }
 
-uint16_t ld_a_a()
+uint8_t ld_a_a()
 {
   return ld(A, A);
 }
 
-uint16_t alu_add_a_b()
+uint8_t alu_add_a_b()
 {
   return ALU(ADD, A, B);
 }
 
-uint16_t alu_add_a_c()
+uint8_t alu_add_a_c()
 {
   return ALU(ADD, A, C);
 }
 
-uint16_t alu_add_a_d()
+uint8_t alu_add_a_d()
 {
   return ALU(ADD, A, D);
 }
 
-uint16_t alu_add_a_e()
+uint8_t alu_add_a_e()
 {
   return ALU(ADD, A, E);
 }
 
-uint16_t alu_add_a_h()
+uint8_t alu_add_a_h()
 {
   return ALU(ADD, A, H);
 }
 
-uint16_t alu_add_a_l()
+uint8_t alu_add_a_l()
 {
   return ALU(ADD, A, L);
 }
 
-uint16_t alu_add_a_hl()
+uint8_t alu_add_a_hl()
 {
   return ALU(ADD, A, HL);
 }
 
-uint16_t alu_add_a_a()
+uint8_t alu_add_a_a()
 {
   return ALU(ADD, A, A);
 }
 
-uint16_t alu_adc_a_b()
+uint8_t alu_adc_a_b()
 {
   return ALU(ADC, A, B);
 }
 
-uint16_t alu_adc_a_c()
+uint8_t alu_adc_a_c()
 {
   return ALU(ADC, A, C);
 }
 
-uint16_t alu_adc_a_d()
+uint8_t alu_adc_a_d()
 {
   return ALU(ADC, A, D);
 }
 
-uint16_t alu_adc_a_e()
+uint8_t alu_adc_a_e()
 {
   return ALU(ADC, A, E);
 }
 
-uint16_t alu_adc_a_h()
+uint8_t alu_adc_a_h()
 {
   return ALU(ADC, A, H);
 }
 
-uint16_t alu_adc_a_l()
+uint8_t alu_adc_a_l()
 {
   return ALU(ADC, A, L);
 }
 
-uint16_t alu_adc_a_hl()
+uint8_t alu_adc_a_hl()
 {
   return ALU(ADC, A, L);
 }
 
-uint16_t alu_adc_a_a()
+uint8_t alu_adc_a_a()
 {
   return ALU(ADC, A, L);
 }
 
-uint16_t alu_sub_a_b()
+uint8_t alu_sub_a_b()
 {
   return ALU(SUB, A, B);
 }
 
-uint16_t alu_sub_a_c()
+uint8_t alu_sub_a_c()
 {
   return ALU(SUB, A, C);
 }
 
-uint16_t alu_sub_a_d()
+uint8_t alu_sub_a_d()
 {
   return ALU(SUB, A, D);
 }
 
-uint16_t alu_sub_a_e()
+uint8_t alu_sub_a_e()
 {
   return ALU(SUB, A, E);
 }
 
-uint16_t alu_sub_a_h()
+uint8_t alu_sub_a_h()
 {
   return ALU(SUB, A, H);
 }
 
-uint16_t alu_sub_a_l()
+uint8_t alu_sub_a_l()
 {
   return ALU(SUB, A, L);
 }
 
-uint16_t alu_sub_a_hl()
+uint8_t alu_sub_a_hl()
 {
   return ALU(SUB, A, HL);
 }
 
-uint16_t alu_sub_a_a()
+uint8_t alu_sub_a_a()
 {
   return ALU(SUB, A, A);
 }
 
-uint16_t alu_sbc_a_b()
+uint8_t alu_sbc_a_b()
 {
   return ALU(SBC, A, B);
 }
 
-uint16_t alu_sbc_a_c()
+uint8_t alu_sbc_a_c()
 {
   return ALU(SBC, A, C);
 }
 
-uint16_t alu_sbc_a_d()
+uint8_t alu_sbc_a_d()
 {
   return ALU(SBC, A, D);
 }
 
-uint16_t alu_sbc_a_e()
+uint8_t alu_sbc_a_e()
 {
   return ALU(SBC, A, E);
 }
 
-uint16_t alu_sbc_a_h()
+uint8_t alu_sbc_a_h()
 {
   return ALU(SBC, A, H);
 }
 
-uint16_t alu_sbc_a_l()
+uint8_t alu_sbc_a_l()
 {
   return ALU(SBC, A, L);
 }
 
-uint16_t alu_sbc_a_hl()
+uint8_t alu_sbc_a_hl()
 {
   return ALU(SBC, A, HL);
 }
 
-uint16_t alu_sbc_a_a()
+uint8_t alu_sbc_a_a()
 {
   return ALU(SBC, A, A);
 }
 
+uint8_t alu_and_a_b()
+{
+  return ALU(AND, A, B);
+}
+
+uint8_t alu_and_a_c()
+{
+  return ALU(AND, A, C);
+}
+
+uint8_t alu_and_a_d()
+{
+  return ALU(AND, A, D);
+}
+
+uint8_t alu_and_a_e()
+{
+  return ALU(AND, A, E);
+}
+
+uint8_t alu_and_a_h()
+{
+  return ALU(AND, A, H);
+}
+
+uint8_t alu_and_a_l()
+{
+  return ALU(AND, A, L);
+}
+
+uint8_t alu_and_a_hl()
+{
+  return ALU(AND, A, HL);
+}
+
+uint8_t alu_and_a_a()
+{
+  return ALU(AND, A, A);
+}
+
+uint8_t alu_xor_a_b()
+{
+  return ALU(XOR, A, B);
+}
+
+uint8_t alu_xor_a_c()
+{
+  return ALU(XOR, A, C);
+}
+
+uint8_t alu_xor_a_d()
+{
+  return ALU(XOR, A, D);
+}
+
+uint8_t alu_xor_a_e()
+{
+  return ALU(XOR, A, E);
+}
+
+uint8_t alu_xor_a_h()
+{
+  return ALU(XOR, A, H);
+}
+
+uint8_t alu_xor_a_l()
+{
+  return ALU(XOR, A, L);
+}
+
+uint8_t alu_xor_a_hl()
+{
+  return ALU(XOR, A, HL);
+}
+
+uint8_t alu_xor_a_a()
+{
+  return ALU(XOR, A, A);
+}
+
+uint8_t alu_or_a_b()
+{
+  return ALU(OR, A, B);
+}
+
+uint8_t alu_or_a_c()
+{
+  return ALU(OR, A, C);
+}
+
+uint8_t alu_or_a_d()
+{
+  return ALU(OR, A, D);
+}
+
+uint8_t alu_or_a_e()
+{
+  return ALU(OR, A, E);
+}
+
+uint8_t alu_or_a_h()
+{
+  return ALU(OR, A, H);
+}
+
+uint8_t alu_or_a_l()
+{
+  return ALU(OR, A, L);
+}
+
+uint8_t alu_or_a_hl()
+{
+  return ALU(OR, A, HL);
+}
+
+uint8_t alu_or_a_a()
+{
+  return ALU(OR, A, A);
+}
+
+uint8_t alu_cp_a_b()
+{
+  return ALU(CP, A, B);
+}
+
+uint8_t alu_cp_a_c()
+{
+  return ALU(CP, A, C);
+}
+
+uint8_t alu_cp_a_d()
+{
+  return ALU(CP, A, D);
+}
+
+uint8_t alu_cp_a_e()
+{
+  return ALU(CP, A, E);
+}
+
+uint8_t alu_cp_a_h()
+{
+  return ALU(CP, A, H);
+}
+
+uint8_t alu_cp_a_l()
+{
+  return ALU(CP, A, L);
+}
+
+uint8_t alu_cp_a_hl()
+{
+  return ALU(CP, A, HL);
+}
+
+uint8_t alu_cp_a_a()
+{
+  return ALU(CP, A, A);
+}
+
+uint8_t pop_b_c()
+{
+  return pop(B, C);
+}
+
+uint8_t push_b_c()
+{
+  return push(B, C);
+}
+
+uint8_t alu_add_a_immediate()
+{
+  return ALU(ADD,A,Immediate);
+}
+
+uint8_t rst_00()
+{
+  return rst(0x00);
+}
+
+uint8_t func_cb()
+{
+  return CBcodes[readMem(++PC)]();
+}
+
+uint8_t alu_adc_a_immediate()
+{
+  return ALU(ADC, A, Immediate);
+}
+
+uint8_t rst_08()
+{
+  return rst(0x08);
+}
+
+uint8_t pop_d_e()
+{
+  return pop(D, E);
+}
+
+uint8_t unused()
+{
+  return 4; // GMB locks when called
+}
+
+size_t binascii(const char* hex, uint8_t* out)
+{
+  size_t len = strlen(hex);
+  size_t count = 0;
+
+  for (size_t i = 0; i < len; i += 2)
+  {
+    char hi = hex[i];
+    char lo = hex[i + 1];
+    uint8_t value = (strtol((String(hi) + String(lo)).c_str(), NULL, 16));
+    out[count++] = value;
+  }
+  return count;
+}
+
+uint8_t draw()
+{
+  uint8_t smaller_img[1024];
+  uint8_t dst_index = 0;
+  for (uint8_t y = 0; y < sizeof(dpixels); y += 3)
+  {
+    for (uint8_t x = 0; x < sizeof(dpixels[y]); x += 3)
+    {
+      uint8_t src_index = y * 64 + x;
+      smaller_img[dst_index++] = dpixels[src_index];
+    }
+  }
+  
+  memcpy(dpixels, smaller_img, sizeof(smaller_img));
+}
+
+uint8_t cpu()
+{
+  uint8_t cycles = 4;
+
+  if (!cpu_halted)
+  {
+    cycles = opcodes[readMem(PC)]();
+  }
+
+   // DIV  = 0xFF04 //Divider Register (R/W)
+  // TIMA = 0xFF05 //Timer counter (R/W)
+  // TMA  = 0xFF06 //Timer Modulo (R/W)
+  // TAC  = 0xFF07 //Timer Control (R/W)
+
+  //DIV register
+  // Seems to be running very slightly faster than BGB, possibly 
+  // some instructions are returning the wrong number
+  if ((divPrescaler += cycles) > 255)
+  {
+    divPrescaler -= 256;
+    MEM[0xFF04]++;
+  }
+  
+  if (timerEnable)
+  {
+    timerPrescaler -= cycles;
+    while (timerPrescaler < 0)
+    {
+      timerPrescaler += timerLength;
+      if (MEM[0xFF05] ++ == 0xFF)
+      {
+        MEM[0xFF05] = MEM[0xFF06];
+        // Set interrupt flag here
+        MEM[0xFF0F] |= 1 << 2;
+        cpu_halted = false;
+      }
+    }
+  }
+
+    // FF41 - STAT - LCDC Status (R/W)
+  // FF42 - SCY - Scroll Y (R/W)
+  // FF43 - SCX - Scroll X (R/W)
+  // FF44 - LY - LCDC Y-Coordinate (R)
+  // FF45 - LYC - LY Compare (R/W)
+  // FF46 - DMA - DMA Transfer and Start Address (W)
+  // FF47 - BGP - BG Palette Data (R/W) - Non CGB Mode Only
+  // FF48 - OBP0 - Object Palette 0 Data (R/W) - Non CGB Mode Only
+  // FF49 - OBP1 - Object Palette 1 Data (R/W) - Non CGB Mode Only
+  // FF4A - WY - Window Y Position (R/W)
+  // FF4B - WX - Window X Position minus 7 (R/W)
+
+  // Complete scan line takes 456 clks.
+
+  //  Mode 0 H-blank period        - 204 clks
+  //  Mode 1 V-blank period        - 4560 clks
+  //  Mode 2 Reading OAM           - 80 clks
+  //  Mode 3 Reading OAM and VRAM  - 172 clks
+  //
+  //  Mode 2  2_____2_____2_____2_____2_____2___________________2____
+  //  Mode 3  _33____33____33____33____33____33__________________3___
+  //  Mode 0  ___000___000___000___000___000___000________________000
+  //  Mode 1  ____________________________________11111111111111_____
+
+  if (LCD_enabled)
+  {
+    LCD_scan += cycles;
+    
+    uint8_t mode = 0;
+    bool coincidence = false;
+    bool draw = false;
+    
+    if (LCD_scan <= 80)
+    {
+      mode = 2;
+    }
+    else if (LCD_scan <= 252)
+    {
+      mode = 3;
+    }
+    else if (LCD_scan < 456)
+    {
+      draw = (LCD_lastmode != 0);
+      mode = 0;
+    }
+    else
+    {
+      mode = 2;
+      LCD_scan -= 456;
+      MEM[0xFF44] ++;
+      if (MEM[0xFF44] > 153)
+      {
+        MEM[0xFF44] = 0;
+      }
+      coincidence = (MEM[0xFF44] == MEM[0xFF45]);
+    }
+  }
+}
+
 void setup()
 {
+  Serial1.begin(UART_BAUD);
+  delay(1000);
+  
   opcodes[0x00] = nop;
   opcodes[0x01] = ld16_bc_immediate;
   opcodes[0x02] = ld_to_mem_bca;
@@ -1972,29 +2470,73 @@ void setup()
   opcodes[0x9D] = alu_sbc_a_l;
   opcodes[0x9E] = alu_sbc_a_hl;
   opcodes[0x9F] = alu_sbc_a_a;
-
-  uint16_t smaller_img[1024];
-  uint16_t dst_index = 0;
-  for (uint16_t y = 0; y < sizeof(dpixels); y += 3)
-  {
-    for (uint16_t x = 0; x < sizeof(dpixels[y]); x += 3)
-    {
-      uint16_t src_index = y * 64 + x;
-      smaller_img[dst_index++] = dpixels[src_index];
-    }
-  }
-
-  Serial1.begin(UART_BAUD);
-  delay(1000);
   
-  memcpy(dpixels, smaller_img, sizeof(smaller_img));
+  opcodes[0xA0] = alu_and_a_b;
+  opcodes[0xA1] = alu_and_a_c;
+  opcodes[0xA2] = alu_and_a_d;
+  opcodes[0xA3] = alu_and_a_e;
+  opcodes[0xA4] = alu_and_a_h;
+  opcodes[0xA5] = alu_and_a_l;
+  opcodes[0xA6] = alu_and_a_hl;
+  opcodes[0xA7] = alu_and_a_a;
+  opcodes[0xA8] = alu_xor_a_b;
+  opcodes[0xA9] = alu_xor_a_c;
+  opcodes[0xAA] = alu_xor_a_d;
+  opcodes[0xAB] = alu_xor_a_e;
+  opcodes[0xAC] = alu_xor_a_h;
+  opcodes[0xAD] = alu_xor_a_l;
+  opcodes[0xAE] = alu_xor_a_hl;
+  opcodes[0xAF] = alu_xor_a_a;
+  
+  opcodes[0xB0] = alu_or_a_b;
+  opcodes[0xB1] = alu_or_a_c;
+  opcodes[0xB2] = alu_or_a_d;
+  opcodes[0xB3] = alu_or_a_e;
+  opcodes[0xB4] = alu_or_a_h;
+  opcodes[0xB5] = alu_or_a_l;
+  opcodes[0xB6] = alu_or_a_hl;
+  opcodes[0xB7] = alu_or_a_a;
+  opcodes[0xB8] = alu_cp_a_b;
+  opcodes[0xB9] = alu_cp_a_c;
+  opcodes[0xBA] = alu_cp_a_d;
+  opcodes[0xBB] = alu_cp_a_e;
+  opcodes[0xBC] = alu_cp_a_h;
+  opcodes[0xBD] = alu_cp_a_l;
+  opcodes[0xBE] = alu_cp_a_hl;
+  opcodes[0xBF] = alu_cp_a_a;
+
+  opcodes[0xC0] = retNZ;
+  opcodes[0xC1] = pop_b_c;
+  opcodes[0xC2] = jpNZ;
+  opcodes[0xC3] = jp;
+  opcodes[0xC4] = callNZ;
+  opcodes[0xC5] = push_b_c;
+  opcodes[0xC6] = alu_add_a_immediate;
+  opcodes[0xC7] = rst_00;
+  opcodes[0xC8] = retZ;
+  opcodes[0xC9] = ret;
+  opcodes[0xCA] = jpZ;
+  opcodes[0xCB] = func_cb;
+  opcodes[0xCD] = call;
+  opcodes[0xCE] = alu_adc_a_immediate;
+  opcodes[0xCF] = rst_08;
+  
+  opcodes[0xD0] = retNC;
+  opcodes[0xD1] = pop_d_e;
+  opcodes[0xD2] = jpNC;
+  opcodes[0xD3] = unused;
+
+  // According to BGB
+  MEM[0xFF41] = 1;
+  MEM[0xFF43] = 0;
+
 }
 
 void loop()
 {
-  static const uint8_t payload[] = { 6, 7, 8, 9, 10 };
+  
 
   // Write all bytes in one call
-  Serial1.write(payload, sizeof(payload));
+  //Serial1.write(payload, sizeof(payload));
   // put your main code here, to run repeatedly:
 }
