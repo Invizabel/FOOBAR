@@ -1,3 +1,4 @@
+
 let serial = require("serial");
 let storage = require("storage");
 serial.setup("usart", 230400);
@@ -23,7 +24,6 @@ while (1)
     if (new_data.length === 2)
     {
         let send = parseInt(new_data.charCodeAt(0).toString(16));
-        delay(500);
         serial.write(send);
     
         let vgm_data = serial.readBytes(1,2);

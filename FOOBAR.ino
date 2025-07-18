@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #define UART_BAUD 230400
+#include <iostream>
+using namespace std;
 
 // Registers and Pointers
 uint8_t REG[8];
@@ -1229,6 +1231,28 @@ uint8_t jpNC()
   return 16;
 }
 
+uint8_t callNC()
+{
+  if (FLAGS.C)
+  {
+    PC += 3;
+    return 12;
+  }
+  
+  return call();
+}
+
+uint8_t callC()
+{
+  if (!FLAGS.C)
+  {
+    PC += 3;
+    return 12;
+  }
+  
+  return call();
+}
+
 uint8_t nop()
 {
   PC++;
@@ -2169,19 +2193,9 @@ uint8_t unused()
   return 4; // GMB locks when called
 }
 
-size_t binascii(const char* hex, uint8_t* out)
+uint8_t push_d_e()
 {
-  size_t len = strlen(hex);
-  size_t count = 0;
-
-  for (size_t i = 0; i < len; i += 2)
-  {
-    char hi = hex[i];
-    char lo = hex[i + 1];
-    uint8_t value = (strtol((String(hi) + String(lo)).c_str(), NULL, 16));
-    out[count++] = value;
-  }
-  return count;
+  return push(D, E);
 }
 
 uint8_t draw()
@@ -2525,11 +2539,14 @@ void setup()
   opcodes[0xD1] = pop_d_e;
   opcodes[0xD2] = jpNC;
   opcodes[0xD3] = unused;
+  opcodes[0xD4] = callNC;
+  opcodes[0xD5] = push_d_e;
+  opcodes[0xDC] = callC;
+  opcodes[0xDD] = unused;
 
   // According to BGB
   MEM[0xFF41] = 1;
   MEM[0xFF43] = 0;
-
 }
 
 void loop()
