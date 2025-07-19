@@ -1,82 +1,83 @@
 #include <Arduino.h>
+#include <algorithm>
+#include <vector>
 #define UART_BAUD 230400
-#include <iostream>
 using namespace std;
 
 // Registers and Pointers
-uint8_t REG[8];
+std::vector<uint16_t> REG;
 uint16_t PC = 0;
-uint8_t SP = 0;
+uint16_t SP = 0;
 // Flags and State
-uint8_t dpixels[128*64];
-uint8_t divPrescaler = 0;
-uint8_t timerPrescaler = 0;
+std::vector<uint16_t> dpixels;
+uint16_t divPrescaler = 0;
+uint16_t timerPrescaler = 0;
 bool timerEnable = false;
 bool LCD_enabled = false;
-uint8_t timerLength = 1;
-uint8_t LCD_lastmode = 1;
+uint16_t timerLength = 1;
+uint16_t LCD_lastmode = 1;
 uint16_t LCD_scan = 0;
 bool IME = false; // Interrupt master enable
 bool cpu_halted = false;
 // Memory and ROM
-uint8_t MEM[0x10000];
-uint8_t FirstROMPage[512];
-uint8_t ROM[512];
-uint8_t ROMbank = 1; 
-uint16_t ROMbankoffset = ((int16_t)ROMbank - 1) * 0x4000;
-uint8_t cartRAM[0x8000]; // some carts have up to 128K of ram?
-uint8_t RAMbank = 0;
-uint16_t RAMbankoffset = ((int16_t)RAMbank * 0x2000) - 0xA000;
-bool RAMenabled=false;
-uint8_t MBCRamMode = 0; //for MBC1
+std::vector<uint16_t> MEM;
+std::vector<uint16_t> FirstROMPage;
+std::vector<uint16_t> ROM;
+uint16_t ROMbank = 1; 
+uint32_t ROMbankoffset = ((uint32_t) ROMbank - 1) * 0x4000;
+std::vector<uint16_t> cartRAM; // some carts have up to 128K of ram?
+uint16_t RAMbank = 0;
+uint32_t RAMbankoffset = ((uint32_t) RAMbank * 0x2000) - 0xA000;
+bool RAMenabled = false;
+uint16_t MBCRamMode = 0; //for MBC1
 // Joypad Input
-uint8_t joypad_dpad = 0xef,joypad_buttons = 0xdf; // 0 = pressed
-uint8_t keys_dpad = 0xef, keys_buttons = 0xdf; // 0 = pressed
+uint16_t joypad_dpad = 0xef,joypad_buttons = 0xdf; // 0 = pressed
+uint16_t keys_dpad = 0xef, keys_buttons = 0xdf; // 0 = pressed
 // Opcode Constants
-const uint8_t A = 0b111;
-const uint8_t B = 0b000;
-const uint8_t C = 0b001;
-const uint8_t D = 0b010;
-const uint8_t E = 0b011;
-const uint8_t H = 0b100;
-const uint8_t L = 0b101;
-const uint8_t HL = 0b110;
-const uint8_t Immediate = 257;
-const uint8_t BC = 258;
-const uint8_t DE = 259;
-const uint8_t SPr = 260;
-const uint8_t  RLC = 1;
-const uint8_t  RRC = 2;
-const uint8_t  RL  = 3;
-const uint8_t  RR  = 4;
-const uint8_t  SLA = 5;
-const uint8_t  SRA = 6;
-const uint8_t  SRL = 7;
+const uint16_t A = 0b111;
+const uint16_t B = 0b000;
+const uint16_t C = 0b001;
+const uint16_t D = 0b010;
+const uint16_t E = 0b011;
+const uint16_t H = 0b100;
+const uint16_t L = 0b101;
+const uint16_t HL = 0b110;
+const uint16_t Immediate = 257;
+const uint16_t BC = 258;
+const uint16_t DE = 259;
+const uint16_t SPr = 260;
+const uint16_t  RLC = 1;
+const uint16_t  RRC = 2;
+const uint16_t  RL  = 3;
+const uint16_t  RR  = 4;
+const uint16_t  SLA = 5;
+const uint16_t  SRA = 6;
+const uint16_t  SRL = 7;
 
-const uint8_t ADD = 1;
-const uint8_t ADC = 2;
-const uint8_t SUB = 3;
-const uint8_t SBC = 4;
-const uint8_t AND = 5;
-const uint8_t OR  = 6;
-const uint8_t XOR = 7;
-const uint8_t CP  = 8;
+const uint16_t ADD = 1;
+const uint16_t ADC = 2;
+const uint16_t SUB = 3;
+const uint16_t SBC = 4;
+const uint16_t AND = 5;
+const uint16_t OR  = 6;
+const uint16_t XOR = 7;
+const uint16_t CP  = 8;
 
 // CPU
-uint8_t mode = 0;
+uint16_t mode = 0;
 bool coincidence = false;
 bool draw = false;
-uint8_t baseTileOffset;
+uint16_t baseTileOffset;
 bool tileSigned;
 uint16_t tileptr;
+uint16_t pixels[8];
 
-typedef uint8_t (*OpcodeFunc)();
-OpcodeFunc opcodes[256];
+typedef uint16_t (*my_malloc)();
+my_malloc opcodes[256];
 
-typedef uint8_t (*OpcodeFunc)();
-OpcodeFunc CBcodes[256];
+my_malloc CBcodes[256];
 
-struct Pair { uint8_t hi, lo; };
+struct Pair { uint16_t hi, lo; };
 
 struct Flags {
   bool Z = false; // Zero flag
@@ -87,7 +88,7 @@ struct Flags {
 
 Flags FLAGS;
 
-uint8_t readMem(uint8_t addr)
+uint16_t readMem(uint16_t addr)
 {
   if (addr <= 0x3fff) return ROM[addr];
   if (addr <= 0x7fff) return ROM[addr + ROMbankoffset];
@@ -112,7 +113,7 @@ uint8_t readMem(uint8_t addr)
   return MEM[addr];
 }
 
-Pair readMem16(uint8_t addr)
+Pair readMem16(uint16_t addr)
 {
   Pair p;
   p.hi = readMem(addr+1);
@@ -120,7 +121,7 @@ Pair readMem16(uint8_t addr)
   return p;
 }
 
-uint8_t doMBC(uint8_t addr, uint8_t data)
+uint16_t doMBC(uint16_t addr, uint16_t data)
 {
   switch (ROM[0x147])
   {
@@ -277,7 +278,7 @@ uint8_t doMBC(uint8_t addr, uint8_t data)
   }
 }
 
-uint8_t writeMem(uint8_t addr, uint8_t data)
+uint16_t writeMem(uint16_t addr, uint16_t data)
 {
   if (addr <= 0x7fff)
   { 
@@ -557,7 +558,7 @@ uint8_t writeMem(uint8_t addr, uint8_t data)
   //LCD control
   if (addr == 0xFF40)
   {
-    uint8_t cc = data&(1 << 7);
+    uint16_t cc = data&(1 << 7);
     if (LCD_enabled != cc)
     {
       LCD_enabled = !!cc;
@@ -588,8 +589,8 @@ uint8_t writeMem(uint8_t addr, uint8_t data)
   // FF46 - DMA - DMA Transfer and Start Address (W)
   if (addr==0xFF46)
   {
-    uint8_t st = data << 8;
-    for (uint8_t i = 0;i <= 0x9F; i++)
+    uint16_t st = data << 8;
+    for (uint16_t i = 0;i <= 0x9F; i++)
     {
       MEM[0xFE00 + i] = readMem(st + i);
     }
@@ -599,7 +600,7 @@ uint8_t writeMem(uint8_t addr, uint8_t data)
   // disable bootrom
   if (addr==0xFF50)
   {
-    for (uint8_t i = 0; i < 256; i++)
+    for (uint16_t i = 0; i < 256; i++)
     {
       ROM[i] = FirstROMPage[i];
     }
@@ -609,14 +610,14 @@ uint8_t writeMem(uint8_t addr, uint8_t data)
   MEM[addr] = data;
 }
 
-uint8_t writeMem16(uint8_t addr, uint8_t dataH, uint8_t dataL)
+uint16_t writeMem16(uint16_t addr, uint16_t dataH, uint16_t dataL)
 {
   writeMem(addr, dataL);
   writeMem(addr+1, dataH);
 }
 
 // Messy...
-uint8_t ld16(uint8_t a, uint8_t b, uint8_t c)
+uint16_t ld16(uint16_t a, uint16_t b, uint16_t c)
 {
   if (b == Immediate)
   {
@@ -651,7 +652,7 @@ uint8_t ld16(uint8_t a, uint8_t b, uint8_t c)
   return 8;
 }
 
-uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
+uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
 {
   if (a == Immediate)
   {
@@ -670,16 +671,16 @@ uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
   return 8;
 }
 
-uint8_t incdec_process_8bit(uint8_t a, uint8_t offset)
+uint16_t incdec_process_8bit(uint16_t a, uint16_t offset)
 {
-    uint8_t result = a + offset;
+    uint16_t result = a + offset;
     FLAGS.H = !!(((a & 0x0F) + offset) & 0x10);
     FLAGS.N = offset == -1;
     FLAGS.Z = ((result & 0xff) == 0);
     return result;
 }
 
-uint8_t incdec(uint8_t r, uint8_t offset)
+uint16_t incdec(uint16_t r, uint16_t offset)
 {
   if (r == HL)
   {
@@ -692,17 +693,17 @@ uint8_t incdec(uint8_t r, uint8_t offset)
   return 4;
 }
 
-uint8_t dec(uint8_t a)
+uint16_t dec(uint16_t a)
 {
   return incdec(a, -1);
 }
 
-uint8_t inc(uint8_t a)
+uint16_t inc(uint16_t a)
 {
   return incdec(a, 1);
 }
 
-uint8_t ld(uint8_t a, uint8_t b)
+uint16_t ld(uint16_t a, uint16_t b)
 { 
   if (b == Immediate)
   {
@@ -715,9 +716,9 @@ uint8_t ld(uint8_t a, uint8_t b)
   return 4;
 }
 
-uint8_t shift_process(uint8_t op, uint8_t a)
+uint16_t shift_process(uint16_t op, uint16_t a)
 {
-  uint8_t bit7 = a >> 7, bit0 = a&1;
+  uint16_t bit7 = a >> 7, bit0 = a&1;
 
   switch (op)
   {
@@ -757,7 +758,7 @@ uint8_t shift_process(uint8_t op, uint8_t a)
   return a;
 }
 
-uint8_t shift_fast(uint8_t op, uint8_t a)
+uint16_t shift_fast(uint16_t op, uint16_t a)
 {
     REG[a] = shift_process(op, REG[a]);
     FLAGS.Z = false; // Bizarre, but correct
@@ -765,19 +766,19 @@ uint8_t shift_fast(uint8_t op, uint8_t a)
     return 4;
 }
 
-uint8_t ld_imm_sp()
+uint16_t ld_imm_sp()
 {
   writeMem16(readMem(PC + 1) + (readMem(PC + 2) << 8), SP >> 8, SP & 0xFF);
   PC += 3;
   return 20;
 }
 
-uint8_t addHL(uint8_t a, uint8_t b)
+uint16_t addHL(uint16_t a, uint16_t b)
 {
   if (a == SPr)
   {
-    uint8_t c = (REG[L] += (SP & 0xFF)) > 255 ? 1:0;
-    uint8_t h = REG[H] + (SP>>8) + c;
+    uint16_t c = (REG[L] += (SP & 0xFF)) > 255 ? 1:0;
+    uint16_t h = REG[H] + (SP>>8) + c;
     FLAGS.H = !!(((REG[H] & 0x0F) + ((SP >> 8) & 0x0F) + c) & 0x10);
     REG[H] = h;
     FLAGS.C = (h > 255);
@@ -785,8 +786,8 @@ uint8_t addHL(uint8_t a, uint8_t b)
     PC++;
     return 8;
   }
-    uint8_t c = (REG[L]+= REG[b])>255?1:0;
-    uint8_t h = REG[H] + REG[a] + c;
+    uint16_t c = (REG[L]+= REG[b])>255?1:0;
+    uint16_t h = REG[H] + REG[a] + c;
     FLAGS.H = !!(((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10);
     REG[H] = h;
     FLAGS.C = (h > 255);
@@ -795,7 +796,7 @@ uint8_t addHL(uint8_t a, uint8_t b)
     return 8;
 }
 
-uint8_t ld_from_mem(uint8_t a, uint8_t b, uint8_t c)
+uint16_t ld_from_mem(uint16_t a, uint16_t b, uint16_t c)
 {
   if (b == Immediate)
   {
@@ -808,7 +809,7 @@ uint8_t ld_from_mem(uint8_t a, uint8_t b, uint8_t c)
   return 8;
 }
 
-uint8_t dec16(uint8_t a, uint8_t b)
+uint16_t dec16(uint16_t a, uint16_t b)
 {
   if (a == SPr)
   {
@@ -822,20 +823,20 @@ uint8_t dec16(uint8_t a, uint8_t b)
   return 8;
 }
 
-uint8_t func_stop()
+uint16_t func_stop()
 {
   //TODO
   PC+=2;
   return 4;
 }
 
-uint8_t ld_e_immediate()
+uint16_t ld_e_immediate()
 {
   return ld(E, Immediate);
 }
 
 // 16 bit inc / dec affect no flags
-uint8_t inc16(uint8_t a, uint8_t b)
+uint16_t inc16(uint16_t a, uint16_t b)
 {
   if (a == SPr)
   {
@@ -849,18 +850,18 @@ uint8_t inc16(uint8_t a, uint8_t b)
   return 8;
 }
 
-uint8_t signedOffset(uint8_t b)
+uint16_t signedOffset(uint16_t b)
 {
   return (b > 127) ? (b - 256) : b;
 }
 
-uint8_t jr()  // unconditional relative
+uint16_t jr()  // unconditional relative
 {
   PC += 2 + signedOffset(readMem(PC + 1));
   return 12;
 }
 
-uint8_t jrNZ()
+uint16_t jrNZ()
 {
   if (FLAGS.Z)
   {
@@ -872,7 +873,7 @@ uint8_t jrNZ()
   return 12;
 }
 
-uint8_t ldi(uint8_t a, uint8_t b) //load with increment
+uint16_t ldi(uint16_t a, uint16_t b) //load with increment
 {
   if (a == HL)
   {
@@ -892,7 +893,7 @@ uint8_t ldi(uint8_t a, uint8_t b) //load with increment
   return 8;
 }
 
-uint8_t daa()
+uint16_t daa()
 {
   //http://gbdev.gg8.se/wiki/articles/DAA
 
@@ -918,7 +919,7 @@ uint8_t daa()
   return 4;
 }
 
-uint8_t jrZ()
+uint16_t jrZ()
 {
   if (!FLAGS.Z)
   {
@@ -930,7 +931,7 @@ uint8_t jrZ()
   return 12;
 }
 
-uint8_t cpl()
+uint16_t cpl()
 {
   REG[A] = ~REG[A];
   FLAGS.N = true;
@@ -939,7 +940,7 @@ uint8_t cpl()
   return 4;
 }
 
-uint8_t jrNC()
+uint16_t jrNC()
 {
   if (FLAGS.C)
   {
@@ -951,7 +952,7 @@ uint8_t jrNC()
   return 12;
 }
 
-uint8_t ldd(uint8_t a, uint8_t b) // load with decrement
+uint16_t ldd(uint16_t a, uint16_t b) // load with decrement
 { 
   if (a == HL)
   {
@@ -969,7 +970,7 @@ uint8_t ldd(uint8_t a, uint8_t b) // load with decrement
   return 8;
 }
 
-uint8_t scf()
+uint16_t scf()
 {
   FLAGS.N = false;
   FLAGS.H = false;
@@ -978,7 +979,7 @@ uint8_t scf()
   return 4;
 }
 
-uint8_t jrC()
+uint16_t jrC()
 {
   if (!FLAGS.C)
   {
@@ -990,7 +991,7 @@ uint8_t jrC()
   return 12;
 }
 
-uint8_t ccf()
+uint16_t ccf()
 {
   FLAGS.N = false;
   FLAGS.H = false;
@@ -999,7 +1000,7 @@ uint8_t ccf()
   return 4;
 }
 
-uint8_t halt()
+uint16_t halt()
 {
   // if interrupts disabled, stall 1 cycle, skip next instruction and continue
   if (IME) cpu_halted=true;
@@ -1008,9 +1009,9 @@ uint8_t halt()
 }
 
 
-uint8_t ALU_process_8bit(uint8_t op, uint8_t b)
+uint16_t ALU_process_8bit(uint16_t op, uint16_t b)
 {
-  uint8_t result = REG[A];
+  uint16_t result = REG[A];
   FLAGS.N = false;
   switch (op)
   {
@@ -1060,7 +1061,7 @@ uint8_t ALU_process_8bit(uint8_t op, uint8_t b)
   return result & 0xFF;
 }
 
-uint8_t ALU(uint8_t op, uint8_t a, uint8_t b)
+uint16_t ALU(uint16_t op, uint16_t a, uint16_t b)
 {
   if (b == Immediate)
   {
@@ -1081,7 +1082,7 @@ uint8_t ALU(uint8_t op, uint8_t a, uint8_t b)
   return 4;
 }
 
-uint8_t ret()
+uint16_t ret()
 {
     Pair s = readMem16(SP);
     SP += 2;
@@ -1089,7 +1090,7 @@ uint8_t ret()
     return 16;
 }
 
-uint8_t retNZ()
+uint16_t retNZ()
 {
   if (FLAGS.Z)
   {
@@ -1100,7 +1101,7 @@ uint8_t retNZ()
   return 20;
 }
 
-uint8_t pop(uint8_t a, uint8_t b)
+uint16_t pop(uint16_t a, uint16_t b)
 {
   if (a == A)
   {
@@ -1127,7 +1128,7 @@ uint8_t pop(uint8_t a, uint8_t b)
     }
 }
 
-uint8_t jpNZ()
+uint16_t jpNZ()
 {
   if (FLAGS.Z)
   {
@@ -1139,7 +1140,7 @@ uint8_t jpNZ()
   return 16;
 }
 
-uint8_t jpZ()
+uint16_t jpZ()
 {
   if (!FLAGS.Z)
   {
@@ -1151,17 +1152,17 @@ uint8_t jpZ()
   return 16;
 }
 
-uint8_t jp()  // unconditional absolute
+uint16_t jp()  // unconditional absolute
 {
   PC = readMem(PC + 1) + (readMem(PC + 2) << 8);
   return 16;
 }
 
-uint8_t push(uint8_t a, uint8_t b)
+uint16_t push(uint16_t a, uint16_t b)
 {
   if (a == A)
   {
-    uint8_t flags = (FLAGS.Z << 7) + (FLAGS.N << 6) + (FLAGS.H << 5) + (FLAGS.C << 4);
+    uint16_t flags = (FLAGS.Z << 7) + (FLAGS.N << 6) + (FLAGS.H << 5) + (FLAGS.C << 4);
     SP -= 2;
     writeMem16(SP, REG[A], flags);
     PC++;
@@ -1174,7 +1175,7 @@ uint8_t push(uint8_t a, uint8_t b)
   return 16;
 }
 
-uint8_t call()
+uint16_t call()
 {
   SP -= 2;
   uint16_t npc = PC + 3;
@@ -1183,7 +1184,7 @@ uint8_t call()
   return 24;
 }
 
-uint8_t callNZ()
+uint16_t callNZ()
 {
   if (FLAGS.Z)
   {
@@ -1194,7 +1195,7 @@ uint8_t callNZ()
   return call();
 }
 
-uint8_t rst(uint8_t a)
+uint16_t rst(uint16_t a)
 {
   SP -= 2;
   uint16_t npc = PC + 1; // datasheets say to push the current program counter, but surely it means the return address
@@ -1203,7 +1204,7 @@ uint8_t rst(uint8_t a)
   return 16;
 }
 
-uint8_t retZ()
+uint16_t retZ()
 {
   if (!FLAGS.Z)
   {
@@ -1215,7 +1216,7 @@ uint8_t retZ()
   return 20;
 }
 
-uint8_t retNC()
+uint16_t retNC()
 {
   if (FLAGS.C)
   {
@@ -1227,7 +1228,7 @@ uint8_t retNC()
   return 20;
 }
 
-uint8_t jpNC()
+uint16_t jpNC()
 {
   if (FLAGS.C)
   {
@@ -1239,7 +1240,7 @@ uint8_t jpNC()
   return 16;
 }
 
-uint8_t callNC()
+uint16_t callNC()
 {
   if (FLAGS.C)
   {
@@ -1250,7 +1251,7 @@ uint8_t callNC()
   return call();
 }
 
-uint8_t callC()
+uint16_t callC()
 {
   if (!FLAGS.C)
   {
@@ -1261,7 +1262,7 @@ uint8_t callC()
   return call();
 }
 
-uint8_t ldh(uint8_t a, uint8_t b)
+uint16_t ldh(uint16_t a, uint16_t b)
 {
   if (a == A)
   {
@@ -1277,7 +1278,7 @@ uint8_t ldh(uint8_t a, uint8_t b)
   return 12;
 }
 
-uint8_t ldc(uint8_t a, uint8_t b)
+uint16_t ldc(uint16_t a, uint16_t b)
 {
   if (a == A) // LD A, (FF00 + C)
   {
@@ -1292,974 +1293,992 @@ uint8_t ldc(uint8_t a, uint8_t b)
   return 8;
 }
 
-uint8_t nop()
+uint16_t nop()
 {
   PC++;
   return 4;
 }
 
-uint8_t ld16_bc_immediate()
+uint16_t ld16_bc_immediate()
 {
   return ld16(B,C,Immediate);
 }
 
-uint8_t ld_to_mem_bca()
+uint16_t ld_to_mem_bca()
 {
   return ld_to_mem(B,C,A);
 }
 
-uint8_t inc16_b_c()
+uint16_t inc16_b_c()
 {
   return inc16(B,C);
 }
 
-uint8_t inc_b()
+uint16_t inc_b()
 {
   return inc(B);
 }
 
-uint8_t dec_b()
+uint16_t dec_b()
 {
   return dec(B);
 }
 
-uint8_t ld_b_immediate()
+uint16_t ld_b_immediate()
 {
   return ld(B, Immediate);
 }
 
-uint8_t shift_fast_rlc_a()
+uint16_t shift_fast_rlc_a()
 {
   return shift_fast(RLC, A);
 }
 
-uint8_t add_hl_b_c()
+uint16_t add_hl_b_c()
 {
   return addHL(B, C);
 }
 
-uint8_t ld_from_mem_a_b_c()
+uint16_t ld_from_mem_a_b_c()
 {
   return ld_from_mem(A, B, C);
 }
 
-uint8_t dec16_b_c()
+uint16_t dec16_b_c()
 {
   return dec16(B,C);
 }
 
-uint8_t inc_c()
+uint16_t inc_c()
 {
   return inc(C);
 }
 
-uint8_t dec_c()
+uint16_t dec_c()
 {
   dec(C);
 }
 
-uint8_t ld_c_immediate()
+uint16_t ld_c_immediate()
 {
   return ld(C, Immediate);
 }
 
-uint8_t shift_fast_rrc_a()
+uint16_t shift_fast_rrc_a()
 {
   return shift_fast(RRC, A);
 }
 
-uint8_t ld16_d_e_immediate()
+uint16_t ld16_d_e_immediate()
 {
   return ld16(D,E,Immediate);
 }
 
-uint8_t ld_to_mem_d_e_a()
+uint16_t ld_to_mem_d_e_a()
 {
   return ld_to_mem(D,E,A);
 }
 
-uint8_t inc16_d_e()
+uint16_t inc16_d_e()
 {
   return inc16(D,E);
 }
 
-uint8_t inc_d()
+uint16_t inc_d()
 {
   return inc(D);
 }
 
-uint8_t dec_d()
+uint16_t dec_d()
 {
   return dec(D);
 }
 
-uint8_t ld_d_immediate()
+uint16_t ld_d_immediate()
 {
   return ld(D, Immediate);
 }
 
-uint8_t shift_fast_rl_a()
+uint16_t shift_fast_rl_a()
 {
   return shift_fast(RL, A);
 }
 
-uint8_t addhl_d_e()
+uint16_t addhl_d_e()
 {
   return addHL(D,E); //ADD HL, DE;
 }
 
-uint8_t ld_from_mem_a_d_e()
+uint16_t ld_from_mem_a_d_e()
 {
   return ld_from_mem(A, D, E);
 }
 
-uint8_t dec16_d_e()
+uint16_t dec16_d_e()
 {
   return dec16(D,E);
 }
 
-uint8_t inc_e()
+uint16_t inc_e()
 {
   return inc(E);
 }
 
-uint8_t dec_e()
+uint16_t dec_e()
 {
   return dec(E);
 }
 
-uint8_t shift_fast_rr_a()
+uint16_t shift_fast_rr_a()
 {
   return shift_fast(RR, A);
 }
 
-uint8_t ld16_h_l_immediate()
+uint16_t ld16_h_l_immediate()
 {
   return ld16(H,L,Immediate);
 }
 
-uint8_t ldi_hl_a()
+uint16_t ldi_hl_a()
 {
   return ldi(HL, A);
 }
 
-uint8_t inc16_h_l()
+uint16_t inc16_h_l()
 {
   return inc16(H, L);
 }
 
-uint8_t inc_h()
+uint16_t inc_h()
 {
   return inc(H);
 }
 
-uint8_t dec_h()
+uint16_t dec_h()
 {
   return dec(H);
 }
 
-uint8_t ld_h_immediate()
+uint16_t ld_h_immediate()
 {
   return ld(H, Immediate);
 }
 
-uint8_t addhl_h_l()
+uint16_t addhl_h_l()
 {
   return addHL(H, L);
 }
 
-uint8_t ldi_a_hl()
+uint16_t ldi_a_hl()
 {
   return ldi(A, HL);
 }
 
-uint8_t dec16_h_l()
+uint16_t dec16_h_l()
 {
   return dec16(H, L);
 }
 
-uint8_t inc_l()
+uint16_t inc_l()
 {
   return inc(L);
 }
 
-uint8_t dec_l()
+uint16_t dec_l()
 {
   return dec(L);
 }
 
-uint8_t ld_l_immediate()
+uint16_t ld_l_immediate()
 {
   return ld(L, Immediate);
 }
 
-uint8_t ld16_spr_immediate()
+uint16_t ld16_spr_immediate()
 {
   return ld16(SPr, Immediate, 0);
 }
 
-uint8_t ldd_hl_a()
+uint16_t ldd_hl_a()
 {
   return ldd(HL, A);
 }
-uint8_t inc16_spr()
+uint16_t inc16_spr()
 {
   return inc16(SPr, 0);
 }
 
-uint8_t inc_hl()
+uint16_t inc_hl()
 {
   return inc(HL);
 }
 
-uint8_t dec_hl()
+uint16_t dec_hl()
 {
   return dec(HL);
 }
 
-uint8_t ld_to_mem_h_l_immediate()
+uint16_t ld_to_mem_h_l_immediate()
 {
   return ld_to_mem(H, L, Immediate);
 }
 
-uint8_t addhl_spr()
+uint16_t addhl_spr()
 {
   return addHL(SPr, 0);
 }
 
-uint8_t ldd_a_hl()
+uint16_t ldd_a_hl()
 {
   return ldd(A, HL);
 }
 
-uint8_t dec16_spr()
+uint16_t dec16_spr()
 {
   return dec16(SPr, 0);
 }
 
-uint8_t inc_a()
+uint16_t inc_a()
 {
   return inc(A);
 }
 
-uint8_t dec_a()
+uint16_t dec_a()
 {
   return dec(A);
 }
 
-uint8_t ld_a_immediate()
+uint16_t ld_a_immediate()
 {
   return ld(A, Immediate);
 }
 
-uint8_t ld_b_b()
+uint16_t ld_b_b()
 {
   return ld(B, B);
 }
 
-uint8_t ld_b_c()
+uint16_t ld_b_c()
 {
   return ld(B, C);
 }
 
-uint8_t ld_b_d()
+uint16_t ld_b_d()
 {
   return ld(B, D);
 }
 
-uint8_t ld_b_e()
+uint16_t ld_b_e()
 {
   return ld(B, E);
 }
 
-uint8_t ld_b_h()
+uint16_t ld_b_h()
 {
   return ld(B, H);
 }
 
-uint8_t ld_b_l()
+uint16_t ld_b_l()
 {
   return ld(B, L);
 }
 
-uint8_t ld_from_mem_b_h_l()
+uint16_t ld_from_mem_b_h_l()
 {
   return ld_from_mem(B, H, L);
 }
 
-uint8_t ld_b_a()
+uint16_t ld_b_a()
 {
   return ld(B, A);
 }
 
-uint8_t ld_c_b()
+uint16_t ld_c_b()
 {
   return ld(C, B);
 }
 
-uint8_t ld_c_c()
+uint16_t ld_c_c()
 {
   return ld(C, C);
 }
 
-uint8_t ld_c_d()
+uint16_t ld_c_d()
 {
   return ld(C, D);
 }
 
-uint8_t ld_c_e()
+uint16_t ld_c_e()
 {
   return ld(C, E);
 }
 
-uint8_t ld_c_h()
+uint16_t ld_c_h()
 {
   return ld(C, H);
 }
 
-uint8_t ld_c_l()
+uint16_t ld_c_l()
 {
   return ld(C, L);
 }
 
-uint8_t ld_from_mem_c_h_l()
+uint16_t ld_from_mem_c_h_l()
 {
   return ld_from_mem(C, H, L);
 }
 
-uint8_t ld_c_a()
+uint16_t ld_c_a()
 {
   return ld(C, A);
 }
 
-uint8_t ld_d_b()
+uint16_t ld_d_b()
 {
   return ld(D, B);
 }
 
-uint8_t ld_d_c()
+uint16_t ld_d_c()
 {
   return ld(D, C);
 }
 
-uint8_t ld_d_d()
+uint16_t ld_d_d()
 {
   return ld(D, D);
 }
 
-uint8_t ld_d_e()
+uint16_t ld_d_e()
 {
   return ld(D, E);
 }
 
-uint8_t ld_d_h()
+uint16_t ld_d_h()
 {
   return ld(D, H);
 }
 
-uint8_t ld_d_l()
+uint16_t ld_d_l()
 {
   return ld(D, L);
 }
 
-uint8_t ld_from_mem_d_h_l()
+uint16_t ld_from_mem_d_h_l()
 {
   return ld_from_mem(D, H, L);
 }
 
-uint8_t ld_d_a()
+uint16_t ld_d_a()
 {
   return ld(D, A);
 }
 
-uint8_t ld_e_b()
+uint16_t ld_e_b()
 {
   return ld(E, B);
 }
 
-uint8_t ld_e_c()
+uint16_t ld_e_c()
 {
   return ld(E, C);
 }
 
-uint8_t ld_e_d()
+uint16_t ld_e_d()
 {
   return ld(E, D);
 }
 
-uint8_t ld_e_e()
+uint16_t ld_e_e()
 {
   return ld(E, E);
 }
 
-uint8_t ld_e_h()
+uint16_t ld_e_h()
 {
   return ld(E, H);
 }
 
-uint8_t ld_e_l()
+uint16_t ld_e_l()
 {
   return ld(E, L);
 }
 
-uint8_t ld_from_mem_e_h_l()
+uint16_t ld_from_mem_e_h_l()
 {
   return ld_from_mem(E, H, L);
 }
 
-uint8_t ld_e_a()
+uint16_t ld_e_a()
 {
   return ld(E, A);
 }
 
-uint8_t ld_h_b()
+uint16_t ld_h_b()
 {
   return ld(H, B);
 }
 
-uint8_t ld_h_c()
+uint16_t ld_h_c()
 {
   return ld(H, C);
 }
 
-uint8_t ld_h_d()
+uint16_t ld_h_d()
 {
   return ld(H, D);
 }
 
-uint8_t ld_h_e()
+uint16_t ld_h_e()
 {
   return ld(H, E);
 }
 
-uint8_t ld_h_h()
+uint16_t ld_h_h()
 {
   return ld(H, H);
 }
 
-uint8_t ld_h_l()
+uint16_t ld_h_l()
 {
   return ld(H, L);
 }
 
-uint8_t ld_from_mem_h_h_l()
+uint16_t ld_from_mem_h_h_l()
 {
   return ld_from_mem(H, H, L);
 }
 
-uint8_t ld_h_a()
+uint16_t ld_h_a()
 {
   return ld(H, A);
 }
 
-uint8_t ld_l_b()
+uint16_t ld_l_b()
 {
   return ld(L, B);
 }
 
-uint8_t ld_l_c()
+uint16_t ld_l_c()
 {
   return ld(L, C);
 }
 
-uint8_t ld_l_d()
+uint16_t ld_l_d()
 {
   return ld(L, D);
 }
 
-uint8_t ld_l_e()
+uint16_t ld_l_e()
 {
   return ld(L, E);
 }
 
-uint8_t ld_l_h()
+uint16_t ld_l_h()
 {
   return ld(L, H);
 }
 
-uint8_t ld_l_l()
+uint16_t ld_l_l()
 {
   return ld(L, L);
 }
 
-uint8_t ld_from_mem_l_h_l()
+uint16_t ld_from_mem_l_h_l()
 {
   ld_from_mem(L, H, L);
 }
 
-uint8_t ld_l_a()
+uint16_t ld_l_a()
 {
   return ld(L,A);
 }
 
-uint8_t ld_to_mem_h_l_b()
+uint16_t ld_to_mem_h_l_b()
 {
   return ld_to_mem(H, L, B);
 }
 
-uint8_t ld_to_mem_h_l_c()
+uint16_t ld_to_mem_h_l_c()
 {
   return ld_to_mem(H, L, C);
 }
 
-uint8_t ld_to_mem_h_l_d()
+uint16_t ld_to_mem_h_l_d()
 {
   return ld_to_mem(H, L, D);
 }
 
-uint8_t ld_to_mem_h_l_e()
+uint16_t ld_to_mem_h_l_e()
 {
   return ld_to_mem(H, L, E);
 }
 
-uint8_t ld_to_mem_h_l_h()
+uint16_t ld_to_mem_h_l_h()
 {
   return ld_to_mem(H, L, H);
 }
 
-uint8_t ld_to_mem_h_l_l()
+uint16_t ld_to_mem_h_l_l()
 {
   return ld_to_mem(H,L, L);
 }
 
-uint8_t ld_to_mem_h_l_a()
+uint16_t ld_to_mem_h_l_a()
 {
   return ld_to_mem(H, L, A);
 }
 
-uint8_t ld_a_b()
+uint16_t ld_a_b()
 {
   return ld(A, B);
 }
 
-uint8_t ld_a_c()
+uint16_t ld_a_c()
 {
   return ld(A, C);
 }
 
-uint8_t ld_a_d()
+uint16_t ld_a_d()
 {
   return ld(A, D);
 }
 
-uint8_t ld_a_e()
+uint16_t ld_a_e()
 {
   return ld(A, E);
 }
 
-uint8_t ld_a_h()
+uint16_t ld_a_h()
 {
   return ld(A,H);
 }
 
-uint8_t ld_a_l()
+uint16_t ld_a_l()
 {
   return ld(A, L);
 }
 
-uint8_t ld_from_mem_a_h_l()
+uint16_t ld_from_mem_a_h_l()
 {
   return ld_from_mem(A, H, L);
 }
 
-uint8_t ld_a_a()
+uint16_t ld_a_a()
 {
   return ld(A, A);
 }
 
-uint8_t alu_add_a_b()
+uint16_t alu_add_a_b()
 {
   return ALU(ADD, A, B);
 }
 
-uint8_t alu_add_a_c()
+uint16_t alu_add_a_c()
 {
   return ALU(ADD, A, C);
 }
 
-uint8_t alu_add_a_d()
+uint16_t alu_add_a_d()
 {
   return ALU(ADD, A, D);
 }
 
-uint8_t alu_add_a_e()
+uint16_t alu_add_a_e()
 {
   return ALU(ADD, A, E);
 }
 
-uint8_t alu_add_a_h()
+uint16_t alu_add_a_h()
 {
   return ALU(ADD, A, H);
 }
 
-uint8_t alu_add_a_l()
+uint16_t alu_add_a_l()
 {
   return ALU(ADD, A, L);
 }
 
-uint8_t alu_add_a_hl()
+uint16_t alu_add_a_hl()
 {
   return ALU(ADD, A, HL);
 }
 
-uint8_t alu_add_a_a()
+uint16_t alu_add_a_a()
 {
   return ALU(ADD, A, A);
 }
 
-uint8_t alu_adc_a_b()
+uint16_t alu_adc_a_b()
 {
   return ALU(ADC, A, B);
 }
 
-uint8_t alu_adc_a_c()
+uint16_t alu_adc_a_c()
 {
   return ALU(ADC, A, C);
 }
 
-uint8_t alu_adc_a_d()
+uint16_t alu_adc_a_d()
 {
   return ALU(ADC, A, D);
 }
 
-uint8_t alu_adc_a_e()
+uint16_t alu_adc_a_e()
 {
   return ALU(ADC, A, E);
 }
 
-uint8_t alu_adc_a_h()
+uint16_t alu_adc_a_h()
 {
   return ALU(ADC, A, H);
 }
 
-uint8_t alu_adc_a_l()
+uint16_t alu_adc_a_l()
 {
   return ALU(ADC, A, L);
 }
 
-uint8_t alu_adc_a_hl()
+uint16_t alu_adc_a_hl()
 {
   return ALU(ADC, A, L);
 }
 
-uint8_t alu_adc_a_a()
+uint16_t alu_adc_a_a()
 {
   return ALU(ADC, A, L);
 }
 
-uint8_t alu_sub_a_b()
+uint16_t alu_sub_a_b()
 {
   return ALU(SUB, A, B);
 }
 
-uint8_t alu_sub_a_c()
+uint16_t alu_sub_a_c()
 {
   return ALU(SUB, A, C);
 }
 
-uint8_t alu_sub_a_d()
+uint16_t alu_sub_a_d()
 {
   return ALU(SUB, A, D);
 }
 
-uint8_t alu_sub_a_e()
+uint16_t alu_sub_a_e()
 {
   return ALU(SUB, A, E);
 }
 
-uint8_t alu_sub_a_h()
+uint16_t alu_sub_a_h()
 {
   return ALU(SUB, A, H);
 }
 
-uint8_t alu_sub_a_l()
+uint16_t alu_sub_a_l()
 {
   return ALU(SUB, A, L);
 }
 
-uint8_t alu_sub_a_hl()
+uint16_t alu_sub_a_hl()
 {
   return ALU(SUB, A, HL);
 }
 
-uint8_t alu_sub_a_a()
+uint16_t alu_sub_a_a()
 {
   return ALU(SUB, A, A);
 }
 
-uint8_t alu_sbc_a_b()
+uint16_t alu_sbc_a_b()
 {
   return ALU(SBC, A, B);
 }
 
-uint8_t alu_sbc_a_c()
+uint16_t alu_sbc_a_c()
 {
   return ALU(SBC, A, C);
 }
 
-uint8_t alu_sbc_a_d()
+uint16_t alu_sbc_a_d()
 {
   return ALU(SBC, A, D);
 }
 
-uint8_t alu_sbc_a_e()
+uint16_t alu_sbc_a_e()
 {
   return ALU(SBC, A, E);
 }
 
-uint8_t alu_sbc_a_h()
+uint16_t alu_sbc_a_h()
 {
   return ALU(SBC, A, H);
 }
 
-uint8_t alu_sbc_a_l()
+uint16_t alu_sbc_a_l()
 {
   return ALU(SBC, A, L);
 }
 
-uint8_t alu_sbc_a_hl()
+uint16_t alu_sbc_a_hl()
 {
   return ALU(SBC, A, HL);
 }
 
-uint8_t alu_sbc_a_a()
+uint16_t alu_sbc_a_a()
 {
   return ALU(SBC, A, A);
 }
 
-uint8_t alu_and_a_b()
+uint16_t alu_and_a_b()
 {
   return ALU(AND, A, B);
 }
 
-uint8_t alu_and_a_c()
+uint16_t alu_and_a_c()
 {
   return ALU(AND, A, C);
 }
 
-uint8_t alu_and_a_d()
+uint16_t alu_and_a_d()
 {
   return ALU(AND, A, D);
 }
 
-uint8_t alu_and_a_e()
+uint16_t alu_and_a_e()
 {
   return ALU(AND, A, E);
 }
 
-uint8_t alu_and_a_h()
+uint16_t alu_and_a_h()
 {
   return ALU(AND, A, H);
 }
 
-uint8_t alu_and_a_l()
+uint16_t alu_and_a_l()
 {
   return ALU(AND, A, L);
 }
 
-uint8_t alu_and_a_hl()
+uint16_t alu_and_a_hl()
 {
   return ALU(AND, A, HL);
 }
 
-uint8_t alu_and_a_a()
+uint16_t alu_and_a_a()
 {
   return ALU(AND, A, A);
 }
 
-uint8_t alu_xor_a_b()
+uint16_t alu_xor_a_b()
 {
   return ALU(XOR, A, B);
 }
 
-uint8_t alu_xor_a_c()
+uint16_t alu_xor_a_c()
 {
   return ALU(XOR, A, C);
 }
 
-uint8_t alu_xor_a_d()
+uint16_t alu_xor_a_d()
 {
   return ALU(XOR, A, D);
 }
 
-uint8_t alu_xor_a_e()
+uint16_t alu_xor_a_e()
 {
   return ALU(XOR, A, E);
 }
 
-uint8_t alu_xor_a_h()
+uint16_t alu_xor_a_h()
 {
   return ALU(XOR, A, H);
 }
 
-uint8_t alu_xor_a_l()
+uint16_t alu_xor_a_l()
 {
   return ALU(XOR, A, L);
 }
 
-uint8_t alu_xor_a_hl()
+uint16_t alu_xor_a_hl()
 {
   return ALU(XOR, A, HL);
 }
 
-uint8_t alu_xor_a_a()
+uint16_t alu_xor_a_a()
 {
   return ALU(XOR, A, A);
 }
 
-uint8_t alu_or_a_b()
+uint16_t alu_or_a_b()
 {
   return ALU(OR, A, B);
 }
 
-uint8_t alu_or_a_c()
+uint16_t alu_or_a_c()
 {
   return ALU(OR, A, C);
 }
 
-uint8_t alu_or_a_d()
+uint16_t alu_or_a_d()
 {
   return ALU(OR, A, D);
 }
 
-uint8_t alu_or_a_e()
+uint16_t alu_or_a_e()
 {
   return ALU(OR, A, E);
 }
 
-uint8_t alu_or_a_h()
+uint16_t alu_or_a_h()
 {
   return ALU(OR, A, H);
 }
 
-uint8_t alu_or_a_l()
+uint16_t alu_or_a_l()
 {
   return ALU(OR, A, L);
 }
 
-uint8_t alu_or_a_hl()
+uint16_t alu_or_a_hl()
 {
   return ALU(OR, A, HL);
 }
 
-uint8_t alu_or_a_a()
+uint16_t alu_or_a_a()
 {
   return ALU(OR, A, A);
 }
 
-uint8_t alu_cp_a_b()
+uint16_t alu_cp_a_b()
 {
   return ALU(CP, A, B);
 }
 
-uint8_t alu_cp_a_c()
+uint16_t alu_cp_a_c()
 {
   return ALU(CP, A, C);
 }
 
-uint8_t alu_cp_a_d()
+uint16_t alu_cp_a_d()
 {
   return ALU(CP, A, D);
 }
 
-uint8_t alu_cp_a_e()
+uint16_t alu_cp_a_e()
 {
   return ALU(CP, A, E);
 }
 
-uint8_t alu_cp_a_h()
+uint16_t alu_cp_a_h()
 {
   return ALU(CP, A, H);
 }
 
-uint8_t alu_cp_a_l()
+uint16_t alu_cp_a_l()
 {
   return ALU(CP, A, L);
 }
 
-uint8_t alu_cp_a_hl()
+uint16_t alu_cp_a_hl()
 {
   return ALU(CP, A, HL);
 }
 
-uint8_t alu_cp_a_a()
+uint16_t alu_cp_a_a()
 {
   return ALU(CP, A, A);
 }
 
-uint8_t pop_b_c()
+uint16_t pop_b_c()
 {
   return pop(B, C);
 }
 
-uint8_t push_b_c()
+uint16_t push_b_c()
 {
   return push(B, C);
 }
 
-uint8_t alu_add_a_immediate()
+uint16_t alu_add_a_immediate()
 {
   return ALU(ADD,A,Immediate);
 }
 
-uint8_t rst_00()
+uint16_t rst_00()
 {
   return rst(0x00);
 }
 
-uint8_t func_cb()
+uint16_t func_cb()
 {
   return CBcodes[readMem(++PC)]();
 }
 
-uint8_t alu_adc_a_immediate()
+uint16_t alu_adc_a_immediate()
 {
   return ALU(ADC, A, Immediate);
 }
 
-uint8_t rst_08()
+uint16_t rst_08()
 {
   return rst(0x08);
 }
 
-uint8_t pop_d_e()
+uint16_t pop_d_e()
 {
   return pop(D, E);
 }
 
-uint8_t unused()
+uint16_t unused()
 {
   return 4; // GMB locks when called
 }
 
-uint8_t push_d_e()
+uint16_t push_d_e()
 {
   return push(D, E);
 }
 
-uint8_t alu_sbc_a_immediate()
+uint16_t alu_sbc_a_immediate()
 {
   return ALU(SBC,A,Immediate); 
 }
 
-uint8_t rst_18()
+uint16_t rst_18()
 {
   return rst(0x18);
 }
 
-uint8_t ldh_immediate_a()
+uint16_t ldh_immediate_a()
 {
   return ldh(Immediate, A);
 }
 
-uint8_t pop_h_l()
+uint16_t pop_h_l()
 {
   return pop(H, L);
 }
 
-uint8_t ldc_c_a()
+uint16_t ldc_c_a()
 {
   return ldc(C, A);
+}
+
+std::vector<uint16_t> grabTile(uint16_t n, uint16_t offset, uint16_t row)
+{
+  uint16_t tileIndex = (tileSigned && n > 127) ? (uint16_t)n : n;
+  uint16_t tileBase = offset + tileIndex * 16;
+  uint16_t tileptr = tileBase + (row & 7) * 2;
+
+  uint16_t d1 = MEM[tileptr];
+  uint16_t d2 = MEM[tileptr + 1];
+  std::vector<uint16_t> pixels;
+
+  for (uint16_t i = 0; i < 8; i++)
+  {
+    uint16_t my_bit = 7 - i;
+    pixels[i] = (((d2 >> my_bit) & 1) << 1) | ((d1 >> my_bit) & 1);
+  }
+  return pixels;
 }
 
 uint16_t canvas()
@@ -2278,13 +2297,220 @@ uint16_t canvas()
   //memcpy(dpixels, smaller_img, sizeof(smaller_img));
 }
 
-uint8_t cpu()
+uint16_t cpu()
 {
-  uint8_t cycles = 4;
+  uint16_t cycles = 4;
 
   if (!cpu_halted)
   {
     cycles = opcodes[readMem(PC)]();
+  }
+
+  // DIV  = 0xFF04 // Divider Register (R/W)
+  // TIMA = 0xFF05 // Timer counter (R/W)
+  // TMA  = 0xFF06 // Timer Modulo (R/W)
+  // TAC  = 0xFF07 // Timer Control (R/W)
+
+  //DIV register
+  // Seems to be running very slightly faster than BGB, possibly 
+  // some instructions are returning the wrong number
+  if ((divPrescaler += cycles) > 255)
+  {
+    divPrescaler -= 256;
+    MEM[0xFF04]++;
+  }
+  
+  if (timerEnable)
+  {
+    timerPrescaler -= cycles;
+    while (timerPrescaler < 0)
+    {
+      timerPrescaler += timerLength;
+      if (MEM[0xFF05]++ == 0xFF)
+      {
+        MEM[0xFF05]=MEM[0xFF06];
+       
+        // Set interrupt flag here
+        MEM[0xFF0F] |= 1 << 2;
+        cpu_halted = false;
+      }
+    }
+  }
+
+  // FF41 - STAT - LCDC Status (R/W)
+  // FF42 - SCY - Scroll Y (R/W)
+  // FF43 - SCX - Scroll X (R/W)
+  // FF44 - LY - LCDC Y-Coordinate (R)
+  // FF45 - LYC - LY Compare (R/W)
+  // FF46 - DMA - DMA Transfer and Start Address (W)
+  // FF47 - BGP - BG Palette Data (R/W) - Non CGB Mode Only
+  // FF48 - OBP0 - Object Palette 0 Data (R/W) - Non CGB Mode Only
+  // FF49 - OBP1 - Object Palette 1 Data (R/W) - Non CGB Mode Only
+  // FF4A - WY - Window Y Position (R/W)
+  // FF4B - WX - Window X Position minus 7 (R/W)
+
+  // Complete scan line takes 456 clks.
+
+  //  Mode 0 H-blank period        - 204 clks
+  //  Mode 1 V-blank period        - 4560 clks
+  //  Mode 2 Reading OAM           - 80 clks
+  //  Mode 3 Reading OAM and VRAM  - 172 clks
+  //
+  //  Mode 2  2_____2_____2_____2_____2_____2___________________2____
+  //  Mode 3  _33____33____33____33____33____33__________________3___
+  //  Mode 0  ___000___000___000___000___000___000________________000
+  //  Mode 1  ____________________________________11111111111111_____
+
+  if (LCD_enabled)
+  {
+    LCD_scan += cycles;
+    
+    if (LCD_scan <= 80)
+    {
+      mode = 2;
+    }
+    else if (LCD_scan <= 252)
+    {
+      mode = 3;
+    }
+    else if (LCD_scan < 456)
+    {
+      draw = (LCD_lastmode != 0);
+      mode = 0;
+    }
+    else 
+    {
+      mode = 2;
+      LCD_scan -= 456;
+      MEM[0xFF44] ++;
+      if (MEM[0xFF44] > 153) MEM[0xFF44] = 0;
+      coincidence = (MEM[0xFF44] == MEM[0xFF45]);
+    }
+
+    if (MEM[0xFF44] >= 144)
+    {
+      mode = 1; //vblank
+    }
+    else if (draw)
+    {
+      //Draw scanline
+      uint16_t LY = MEM[0xFF44];
+      uint16_t dpy = LY * 160;
+
+      uint16_t drawWindow = (MEM[0xFF40] & (1 << 5)) && LY >= MEM[0xFF4A];
+      uint16_t bgStopX = drawWindow ? MEM[0xFF4B]-7 : 160;
+
+      //  FF40 - LCDC - LCD Control (R/W)
+      //
+      //  Bit 7 - LCD Display Enable             (0=Off, 1=On)
+      //  Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
+      //  Bit 5 - Window Display Enable          (0=Off, 1=On)
+      //  Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
+      //  Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
+      //  Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
+      //  Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
+      //  Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
+
+      // Tile Data Select
+      if (MEM[0xFF40] & (1 << 4))
+      {
+        baseTileOffset =  0x8000;
+        tileSigned = false;
+      }
+      
+      else
+      {
+        baseTileOffset =  0x9000;
+        tileSigned = true;
+      }
+      uint16_t bgpalette[4] = {
+        (MEM[0xFF47]) & 0x03,
+        (MEM[0xFF47] >> 2) & 0x03,
+        (MEM[0xFF47] >> 4) & 0x03,
+        (MEM[0xFF47] >> 6) & 0x03
+      };
+
+      uint16_t tileNum /* = computeTileRowAddress(tileIndex, row, tileBase) */;
+      uint16_t d1 = MEM[tileNum];
+      uint16_t d2 = MEM[tileNum + 1];
+      uint16_t row[8];
+      for (uint16_t i = 0; i < 8; i++)
+      {
+        uint16_t my_bit = 7 - i;
+        row[i] = (((d2 >> my_bit) & 1) << 1) | ((d1 >> my_bit) & 1); // 0..3
+      }
+
+      if (MEM[0xFF40] & 1)
+      {
+        // BG enabled
+        // BG Tile map display select
+        uint16_t bgTileMapAddr = MEM[0xFF40] & (1 << 3) ? 0x9C00 : 0x9800;
+
+        //scy FF42
+        //scx FF43
+        // scanline number FF44
+        // pixel row = FF44 + FF42
+        // tile row = pixel row >> 3
+        // 32 bytes per row
+        // pixel column = FF43
+        // tile column = pixel column >> 3
+        
+        uint16_t x = MEM[0xFF43] >> 3;
+        uint16_t xoff = MEM[0xFF43] & 7;
+        uint16_t y = (LY + MEM[0xFF42]) &0xFF;
+
+        // Y doesn't change throughout a scanline
+        bgTileMapAddr += (~~(y / 8)) * 32; 
+        uint16_t tileOffset = baseTileOffset + (y & 7) * 2;
+        //uint16_t row = y % 8;
+            
+        std::vector<uint16_t> pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, 0 % 8);
+
+        for (uint16_t i = 0; i < bgStopX; i++)
+        {
+          dpixels[dpy + i] = bgpalette[pix[xoff++]];
+
+          if (xoff == 8)
+          {
+            x = (x + 1) & 0x1F; // wrap horizontally in tile map
+
+            pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, 0 % 8);
+            xoff = 0;
+          }
+
+        }
+      }
+
+    // FF4A - WY
+    // FF4B - WX
+
+    if (drawWindow)
+    {
+      // Window display enable
+      // Window Tile map display select
+      uint16_t wdTileMapAddr = MEM[0xFF40] & (1 << 6) ? 0x9C00 : 0x9800;
+
+      uint16_t xoff = 0;
+      uint16_t y = LY - MEM[0xFF4A];
+      uint16_t row = y % 8;
+
+      wdTileMapAddr += (~~(y / 8)) * 32; 
+      uint16_t tileOffset=baseTileOffset+(y&7)*2;
+
+      std::vector<uint16_t> pix = grabTile(MEM[wdTileMapAddr], tileOffset, row % 8);
+
+      for (uint16_t i = std::max<uint16_t>(0, bgStopX); i < 160;i++)
+      {
+          dpixels[dpy + i] = bgpalette[pix[xoff++]];
+          if (xoff == 8)
+          {
+            pix = grabTile(MEM[++wdTileMapAddr], tileOffset, row % 8);
+            xoff = 0;
+          }
+        }
+
+      }
+    }
   }
 }
 
@@ -2537,10 +2763,10 @@ void loop()
   if (Serial1.available() > 0)
   { 
     int recv = Serial1.read();
-    //uint8_t cycles = cpu();
+    uint16_t cycles = cpu();
     if (recv >= 0)
     {
-      uint8_t payload = (uint8_t)recv;
+      uint16_t payload = (uint16_t)recv;
       Serial1.write(payload); 
       // put your main code here, to run repeatedly:
     }
