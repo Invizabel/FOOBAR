@@ -9,7 +9,8 @@ std::vector<uint16_t> REG;
 uint16_t PC = 0;
 uint16_t SP = 0;
 // Flags and State
-std::vector<uint16_t> dpixels;
+uint16_t dpixels[128*64];
+uint16_t smaller_img[128*64];
 uint16_t divPrescaler = 0;
 uint16_t timerPrescaler = 0;
 bool timerEnable = false;
@@ -21,8 +22,8 @@ bool IME = false; // Interrupt master enable
 bool cpu_halted = false;
 // Memory and ROM
 std::vector<uint16_t> MEM;
-std::vector<uint16_t> FirstROMPage;
-std::vector<uint16_t> ROM;
+uint16_t FirstROMPage[512];
+uint16_t ROM[512];
 uint16_t ROMbank = 1; 
 uint32_t ROMbankoffset = ((uint32_t) ROMbank - 1) * 0x4000;
 std::vector<uint16_t> cartRAM; // some carts have up to 128K of ram?
@@ -71,6 +72,7 @@ uint16_t baseTileOffset;
 bool tileSigned;
 uint16_t tileptr;
 uint16_t pixels[8];
+std::vector<uint16_t> dImgData(160 * 444 * 2);
 
 typedef uint16_t (*my_malloc)();
 my_malloc opcodes[256];
@@ -627,20 +629,20 @@ uint16_t ld16(uint16_t a, uint16_t b, uint16_t c)
       Pair s = readMem16(readMem(PC+1) + (readMem( PC+2 )<<8));
       REG[H] = s.hi;
       REG[L] = s.lo;
-      PC+=3;
+      PC += 3;
       return 12;
     }
 
     // immediate into SP... 
-    SP = readMem(PC+1) + (readMem(PC+2) << 8);
+    SP = readMem(PC + 1) + (readMem(PC + 2) << 8);
     PC += 3;
     return 12;
   }
   if (c == Immediate)
   {
     
-    REG[a] = readMem(PC+2);
-    REG[b] = readMem(PC+1);
+    REG[a] = readMem(PC + 2);
+    REG[b] = readMem(PC + 1);
 
     PC += 3;
     return 12;
@@ -656,13 +658,13 @@ uint16_t ld_to_mem(uint16_t a, uint16_t b, uint16_t c)
 {
   if (a == Immediate)
   {
-    writeMem(readMem(PC + 1) + (readMem( PC + 2) << 8), REG[b]);
+    writeMem(readMem(PC + 1) + (readMem(PC + 2) << 8), REG[b]);
     PC += 3;
     return 16;
   }
   if (c == Immediate)
   {
-    writeMem((REG[a] << 8)+REG[b], readMem(PC+1));
+    writeMem((REG[a] << 8) + REG[b], readMem(PC + 1));
     PC += 2;
     return 12;
   }
@@ -2281,9 +2283,8 @@ std::vector<uint16_t> grabTile(uint16_t n, uint16_t offset, uint16_t row)
   return pixels;
 }
 
-uint16_t canvas()
+uint16_t renderDisplayCanvas()
 {
-  uint16_t smaller_img[1024];
   uint16_t dst_index = 0;
   for (uint16_t y = 0; y < sizeof(dpixels); y += 3)
   {
@@ -2293,8 +2294,33 @@ uint16_t canvas()
       smaller_img[dst_index++] = dpixels[src_index];
     }
   }
-  
-  //memcpy(dpixels, smaller_img, sizeof(smaller_img));
+  memcpy(dpixels, smaller_img, sizeof(smaller_img));
+
+  uint16_t R[4] = {224, 136, 52, 8};
+  uint16_t G[4] = {248, 192, 104, 24};
+  uint16_t B[4] = {208, 112, 86, 32};
+
+  for (uint16_t i = 0, j = 0; i < 160 * 144; i++)
+  {
+    uint16_t val = dpixels[i]; // 0–3
+    uint16_t mono = val <= 1 ? 255 : 0; // Adjust threshold as needed
+    dImgData[j++] = mono; // R
+    dImgData[j++] = mono; // G
+    dImgData[j] = mono; // B
+    j += 2;
+  }
+  // html stuff    
+  //dctx.putImageData(dImgData,0,0)
+}
+
+uint16_t triggerInterrupt(uint16_t vector)
+{
+  cpu_halted = false;
+  writeMem16(SP -= 2, PC >> 8, PC & 0xFF);
+  PC = vector;
+  IME = false;
+
+  return 20;
 }
 
 uint16_t cpu()
@@ -2393,7 +2419,7 @@ uint16_t cpu()
     }
     else if (draw)
     {
-      //Draw scanline
+      // Draw scanline
       uint16_t LY = MEM[0xFF44];
       uint16_t dpy = LY * 160;
 
@@ -2459,12 +2485,14 @@ uint16_t cpu()
         uint16_t xoff = MEM[0xFF43] & 7;
         uint16_t y = (LY + MEM[0xFF42]) &0xFF;
 
+        uint16_t grab_row = y & 8;
+        
         // Y doesn't change throughout a scanline
         bgTileMapAddr += (~~(y / 8)) * 32; 
         uint16_t tileOffset = baseTileOffset + (y & 7) * 2;
         //uint16_t row = y % 8;
             
-        std::vector<uint16_t> pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, 0 % 8);
+        std::vector<uint16_t> pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, grab_row);
 
         for (uint16_t i = 0; i < bgStopX; i++)
         {
@@ -2474,7 +2502,7 @@ uint16_t cpu()
           {
             x = (x + 1) & 0x1F; // wrap horizontally in tile map
 
-            pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, 0 % 8);
+            pix = grabTile(MEM[bgTileMapAddr + x], tileOffset, grab_row);
             xoff = 0;
           }
 
@@ -2492,26 +2520,247 @@ uint16_t cpu()
 
       uint16_t xoff = 0;
       uint16_t y = LY - MEM[0xFF4A];
-      uint16_t row = y % 8;
+
+      uint16_t grab_row = y & 8;
 
       wdTileMapAddr += (~~(y / 8)) * 32; 
-      uint16_t tileOffset=baseTileOffset+(y&7)*2;
+      uint16_t tileOffset = baseTileOffset+(y&7)*2;
 
-      std::vector<uint16_t> pix = grabTile(MEM[wdTileMapAddr], tileOffset, row % 8);
+      std::vector<uint16_t> pix = grabTile(MEM[wdTileMapAddr], tileOffset, grab_row);
 
       for (uint16_t i = std::max<uint16_t>(0, bgStopX); i < 160;i++)
       {
           dpixels[dpy + i] = bgpalette[pix[xoff++]];
           if (xoff == 8)
           {
-            pix = grabTile(MEM[++wdTileMapAddr], tileOffset, row % 8);
+            pix = grabTile(MEM[++wdTileMapAddr], tileOffset, grab_row);
             xoff = 0;
           }
         }
-
+      }
+      if (MEM[0xFF40] & 2)
+      {
+        // Sprite display enabled
+        // Render sprites
+        uint16_t height;
+        uint16_t tileNumMask;
+        
+        if (MEM[0xFF40] & (1 << 2))
+        {
+          height=16;
+          tileNumMask=0xFE; // in 8x16 mode, lowest bit of tile number is ignored
+        }
+        
+        else
+        {
+          height = 8;
+          tileNumMask = 0xFF; 
+        }
+  
+        uint16_t OBP0[4] = {0,
+            (MEM[0xFF48] >> 2) & 3,
+            (MEM[0xFF48] >> 4) & 3,
+            (MEM[0xFF48] >> 6) & 3
+        };
+        uint16_t OBP1[4] = {0,
+            (MEM[0xFF49] >> 2) & 3,
+            (MEM[0xFF49] >> 4) & 3,
+            (MEM[0xFF49] >> 6) & 3
+        };
+        uint16_t background = bgpalette[0];
+  
+        // OAM 4 bytes per sprite, 40 sprites
+        for (uint16_t i = 0xFE9C; i >= 0xFE00; i -= 4)
+        {
+          uint16_t ypos = MEM[i]-16+height;
+          if ( LY >= ypos - height && LY < ypos)
+          {
+            uint16_t tileNum = 0x8000 + (MEM[i + 2] & tileNumMask) * 16;
+            uint16_t xpos = MEM[i+1];
+            uint16_t att = MEM[i+3];
+            
+            // Bit7   OBJ-to-BG Priority (0=OBJ Above BG, 1=OBJ Behind BG color 1-3)
+            //        (Used for both BG and Window. BG color 0 is always behind OBJ)
+            // Bit6   Y flip          (0=Normal, 1=Vertically mirrored)
+            // Bit5   X flip          (0=Normal, 1=Horizontally mirrored)
+            // Bit4   Palette number  **Non CGB Mode Only** (0=OBP0, 1=OBP1)
+  
+            uint16_t* palette = att & (1 << 4) ? OBP1 : OBP0;
+            uint16_t behind = att & (1 << 7);
+  
+            if (att & (1 << 6))
+            {
+              // Y flip
+              tileNum += (ypos - LY - 1) * 2;
+            }
+            
+            else
+            {
+              tileNum += (LY - ypos + height) * 2;
+            }
+  
+            uint16_t  d1 = MEM[tileNum];
+            uint16_t d2 = MEM[tileNum + 1];
+            uint16_t row[8];
+            for (uint16_t i = 0; i < 8; i++)
+            {
+              uint16_t my_bit = 7 - i;
+              row[i] = (((d2 >> my_bit) & 1) << 1) | ((d1 >> my_bit) & 1); // 0..3
+            }
+  
+            if (att & (1 << 5))
+            {
+              // x flip
+              if (behind)
+              {
+                for (uint16_t j = 0; j < std::min<uint16_t>(xpos, 8); j++)
+                {
+                  if (dpixels[dpy + xpos -1 - j] == background && row[j])
+                  {
+                      dpixels[dpy + xpos -1 - j] = palette[row[ j ]];
+                  }
+                }
+              }
+              
+              else
+              {
+                for (uint16_t j = 0; j < std::min<uint16_t>(xpos, 8); j++)
+                {
+                  if (row[j])
+                  {
+                    dpixels[dpy + xpos -(j + 1)] = palette[row[j]];
+                  }
+                }
+              }
+            }
+              
+            else
+            {
+              if (behind)
+              { 
+                for (uint16_t j = std::max<uint16_t>(8 - xpos, 0); j < 8; j++)
+                {
+                  if (dpixels[dpy + xpos -8 + j] == background && row[j])
+                  {
+                    dpixels[dpy + xpos -8 + j] = palette[row[j]];
+                  }
+                }
+              }
+              
+              else
+              {
+                for (uint16_t j = std::max<uint16_t>(8-xpos,0); j < 8; j++)
+                {
+                  if (row[j])
+                  {
+                    dpixels[dpy + xpos - 8 + j] = palette[row[j]];
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
+    
+    //  0xFF41 - LCDC Status
+    //  Bit 6 - LYC=LY Coincidence Interrupt (1=Enable) (Read/Write)
+    //  Bit 5 - Mode 2 OAM Interrupt         (1=Enable) (Read/Write)
+    //  Bit 4 - Mode 1 V-Blank Interrupt     (1=Enable) (Read/Write)
+    //  Bit 3 - Mode 0 H-Blank Interrupt     (1=Enable) (Read/Write)
+    //  Bit 2 - Coincidence Flag  (0:LYC<>LY, 1:LYC=LY) (Read Only)
+    
+    if (coincidence)
+    {
+      if (MEM[0xFF41] & (1 << 6)) // coincidence interrupt enabled
+      {
+        MEM[0xFF0F] |= 1 << 1; // LCD STAT Interrupt flag
+        MEM[0xFF41] |= 1 << 2; // coincidence flag
+      }
+    }
+
+    else
+    {
+      MEM[0xFF41] &= 0xFB; // ~(1<<2)
+    }
+    if (LCD_lastmode != mode) // Mode change
+      if (mode == 0)
+      {
+        if (MEM[0xFF41] & (1 << 3))
+        {
+          MEM[0xFF0F] |= 1 << 1;
+        }
+      }
+      
+      else if (mode == 1)
+      {
+        // LCD STAT interrupt on v-blank
+        if (MEM[0xFF41] & (1 << 4))
+        {
+          MEM[0xFF0F] |= 1 << 1;
+        }
+
+        // Main V-Blank interrupt
+        if (MEM[0xFFFF] & 1)
+        {
+          MEM[0xFF0F] |= 1 << 0;
+        }
+
+        renderDisplayCanvas();
+
+      }
+      
+      else if (mode == 2)
+      {
+        if (MEM[0xFF41] & (1<<5))
+        {
+          MEM[0xFF0F] |= 1 << 1;
+        }
+      }
+
+      MEM[0xFF41] &= 0xF8;
+      MEM[0xFF41] += mode;
+      LCD_lastmode = mode;
   }
+
+  if (IME)
+  {
+    // if enabled and flag set
+    uint16_t i = MEM[0xFF0F] & MEM[0xFFFF];
+
+    if (i & (1 << 0))
+    { 
+      MEM[0xFF0F] &=~ (1 << 0);
+      cycles += triggerInterrupt(0x40);
+    }
+    
+    else if (i & (1 << 1))
+    {
+      MEM[0xFF0F] &=~ (1 << 1);
+      cycles += triggerInterrupt(0x48);
+    }
+    
+    else if (i & (1 << 2))
+    {
+      MEM[0xFF0F] &=~ (1 << 2);
+      cycles += triggerInterrupt(0x50);
+    }
+    
+    else if (i & (1 << 3))
+    {
+      MEM[0xFF0F] &=~ (1 << 3);
+      cycles += triggerInterrupt(0x58);
+    }
+    
+    else if (i & (1 << 4))
+    {
+      MEM[0xFF0F] &=~(1<<4);
+      cycles += triggerInterrupt(0x60);
+    }
+
+  } //else cpu_halted=false
+
+  return cycles;
 }
 
 void setup()
@@ -2763,7 +3012,7 @@ void loop()
   if (Serial1.available() > 0)
   { 
     int recv = Serial1.read();
-    uint16_t cycles = cpu();
+    //uint16_t cycles = cpu();
     if (recv >= 0)
     {
       uint16_t payload = (uint16_t)recv;
