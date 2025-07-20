@@ -3009,11 +3009,12 @@ void loop()
 {
   if (Serial1.available() > 0)
   { 
-    int recv = Serial1.read();
-    //uint8_t cycles = cpu();
+    String recv = Serial1.readString();
+    recv.getBytes(ROM, sizeof(ROM));
+    uint8_t cycles = cpu();
     if (recv >= 0)
     {
-      uint8_t payload = (uint8_t)recv;
+      uint32_t payload = (uint32_t)cycles;
       Serial1.write(payload); 
       // put your main code here, to run repeatedly:
     }

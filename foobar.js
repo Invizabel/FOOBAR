@@ -2,7 +2,7 @@ let serial = require("serial");
 let storage = require("storage");
 serial.setup("usart", 230400);
 
-let PC = -2;
+let PC = 0;
 let boot_code = "31FEFFAF21FF9F32CB7C20FB2126FF0E113E8032E20C3EF3E2323E77773EFCE04711A8002110801ACD9500CD9600137BFE3420F311D80006081A1322230520F93E19EA1099212F990E0C3D2808320D20F92E0F18F3673E6457E0423E91E040041E020E0CF044FE9020FA0D20F71D20F20E13247C1E83FE6228061EC1FE6420067BE20C3E87E2F04290E0421520D205204F162018CB4F0604C5CB1117C1CB11170520F522232223C90000000D00091109893908C9000B0003000CCCCC000F00000000ECCCECCCDDDD99999889EEFB67636E0ECCDD1F9F8888000000000000000021A80011A8001A13BE20FE237DFE3420F506197886230520FB8620FE3E01E050";
 let my_rom = "/ext/test.gb";
 let file = storage.openFile(my_rom, "r", "open_existing");
@@ -17,17 +17,22 @@ for (let i = 0; i < 256; i++)
 
 while (1)
 {
-    PC += 2;
     file.seekRelative(PC);
-    let new_data = file.read("ascii",2);
-    if (new_data.length === 2)
+    let new_data = file.read("ascii",512);
+    while (new_data.length < 512)
     {
-        let send = parseInt(new_data.charCodeAt(0).toString(16));
-        serial.write(send);
-    
-        let vgm_data = serial.readBytes(1,2);
-        if (vgm_data === undefined) continue;
-        let data = Uint8Array(vgm_data);
-        print(data[0]);
+        new_data += "00"
     }
+    if (new_data.length >= 2)
+    {
+        let send = parseInt(new_data.charCodeAt(0).toString(16),16);
+        serial.write(send);
+    }
+    
+    let recv = serial.readAny(1000);
+    if (typeof recv === "string")
+    {
+        PC = parseInt(recv);
+    }
+    print(PC);
 }
