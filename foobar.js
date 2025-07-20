@@ -1,4 +1,3 @@
-
 let serial = require("serial");
 let storage = require("storage");
 serial.setup("usart", 230400);
@@ -30,10 +29,5 @@ while (1)
         if (vgm_data === undefined) continue;
         let data = Uint8Array(vgm_data);
         print(data[0]);
-    }
-
-    else
-    {   
-        serial.end();
     }
 }
