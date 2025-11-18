@@ -1,36 +1,92 @@
 #include <cstdint>
 #include <string.h>
+#include <furi.h>
+#include <furi_hal.h>
+#include <storage/storage.h>
 
 int PC;
-uint8_t MEMORY[64 * 1024];
-uint16_t BC;
+int SP = 0;
 
-const uint8_t A = 0b111;
+uint8_t cart_ram[32768];
+uint8_t mem[65536];
+uint8_t ROM[512];
+
+uint16_t BC = 228;
+uint16_t DE = 259;
+uint16_t HL = 0b110;
+uint16_t SPr = 260;
+uint16_t Immediate = 257;
+
+uint8_t A = 0b111;
+uint8_t B = 0b000;
+uint8_t C = 0b001;
+uint8_t D = 0b010;
+uint8_t E = 0b011;
+uint16_t H = 0b100;
+uint16_t L = 0b101;
+
+uint8_t N;
+uint8_t Z;
+uint8_t REG[8];
+
+uint8_t joypad_dpad = 0xef;
+uint8_t joypad_buttons = 0xdf;
+uint8_t keys_dpad = 0xef;
+uint8_t keys_buttons = 0xdf;
 
 void write(uint16_t addr, uint8_t value)
 {
-    MEMORY[addr] = value;
+    cart_ram[addr] = value;
 }
 
-int opcodes(char * opcode)
+uint8_t read_mem(uint8_t addr)
 {
-    if (strcmp(opcode, "00"))
+    return ROM[addr];
+}
+
+int opcodes(uint8_t opcode)
+{
+    if (opcode == 0x00)
     {
-        return 0;
+        PC += 1;
+        return 4;
     }
     
-    if (strcmp(opcode, "01"))
+    if (opcode == 0x01)
     {
-        uint8_t low = PC;
-        PC += 1;
-        uint8_t high = PC;
-        PC += 1;
-        BC = (high << 8) | low;
-    }
+        uint8_t a = B;
+        uint8_t b = C;
+        uint16_t c = Immediate;
+        
+        if (B == Immediate)
+        {
+            if (a == HL)
+            {
+                
+                
+                uint16_t s = (read_mem(PC+1) + (read_mem(PC+2) << 8));
+                REG[H] = (s >> 8) & 0xFF;
+                REG[L] = s & 0xFF;
+                PC += 3;
+            }
 
-    if (strcmp(opcode, "02") == 0)
-    {
-        write(BC, A);
+            SP = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+            PC += 3;
+            return 12;
+        }
+    
+        if (c == Immediate)
+        {
+            REG[a] = read_mem(PC + 2);
+            REG[b] = read_mem(PC + 1);
+
+            PC += 3;
+            return 12;
+        }
+
+        SP = (REG[H] << 8) + REG[L];
+        PC++;
+        return 8;
     }
 
     return 0;
@@ -38,6 +94,23 @@ int opcodes(char * opcode)
 
 int main()
 {
-    char opcode[] = "02";
-    opcodes(opcode);
+    Storage* storage = (Storage*)furi_record_open("storage");
+    
+    File* rom_file = storage_file_alloc(storage);
+    File* debug_file = storage_file_alloc(storage);
+
+    if(storage_file_open(rom_file, "/ext/kirby.gb", FSAM_READ, FSOM_OPEN_ALWAYS))
+    {
+        storage_file_read(rom_file, ROM, 512);
+        storage_file_close(rom_file);
+    }
+
+    for (int i = 0; i < 512; i++)
+    {
+        opcodes(ROM[i]);
+    }
+
+    storage_file_free(rom_file);
+    storage_file_free(debug_file);
+    furi_record_close("storage");
 }
