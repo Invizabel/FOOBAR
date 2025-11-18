@@ -68,6 +68,7 @@ int opcodes(uint8_t opcode)
                 REG[H] = (s >> 8) & 0xFF;
                 REG[L] = s & 0xFF;
                 PC += 3;
+                return 12;
             }
 
             SP = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
