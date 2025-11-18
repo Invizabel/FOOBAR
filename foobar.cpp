@@ -4,7 +4,7 @@
 #include <furi_hal.h>
 #include <storage/storage.h>
 
-int PC;
+int PC = 0;
 int SP = 0;
 
 uint8_t cart_ram[32768];
@@ -64,7 +64,7 @@ int opcodes(uint8_t opcode)
             {
                 
                 
-                uint16_t s = (read_mem(PC+1) + (read_mem(PC+2) << 8));
+                uint16_t s = (read_mem(PC + 1) + (read_mem(PC + 2) << 8));
                 REG[H] = (s >> 8) & 0xFF;
                 REG[L] = s & 0xFF;
                 PC += 3;
@@ -80,12 +80,12 @@ int opcodes(uint8_t opcode)
             REG[a] = read_mem(PC + 2);
             REG[b] = read_mem(PC + 1);
 
-            PC += 3;
+            PC += 12;
             return 12;
         }
 
         SP = (REG[H] << 8) + REG[L];
-        PC++;
+        PC += 1;
         return 8;
     }
 
@@ -97,20 +97,31 @@ int main()
     Storage* storage = (Storage*)furi_record_open("storage");
     
     File* rom_file = storage_file_alloc(storage);
-    File* debug_file = storage_file_alloc(storage);
 
-    if(storage_file_open(rom_file, "/ext/kirby.gb", FSAM_READ, FSOM_OPEN_ALWAYS))
+    size_t offset = 0;
+    while(true)
     {
-        storage_file_read(rom_file, ROM, 512);
-        storage_file_close(rom_file);
-    }
+        if(storage_file_open(rom_file, "/ext/kirby.gb", FSAM_READ, FSOM_OPEN_ALWAYS))
+        {
+            if(!storage_file_seek(rom_file, offset, SEEK_SET))
+            {
+                break;
+            }
 
-    for (int i = 0; i < 512; i++)
-    {
-        opcodes(ROM[i]);
-    }
+        
+            storage_file_read(rom_file, ROM, 512);
 
+
+            for (int i = 0; i < 512; i++)
+            {
+                opcodes(ROM[i+offset]);
+            }
+
+            offset += 512;
+        }
+    }
+    
+    storage_file_close(rom_file);
     storage_file_free(rom_file);
-    storage_file_free(debug_file);
     furi_record_close("storage");
 }
