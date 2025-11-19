@@ -95,37 +95,29 @@ int opcodes(uint8_t opcode)
 
 int main()
 {
-    Storage* storage = (Storage*)furi_record_open("storage");
-    
+    Storage* storage = (Storage*)furi_record_open("storage");    
     File* rom_file = storage_file_alloc(storage);
 
-    size_t offset = 0;
-    while(true)
+    int advance = 0;
+    uint64_t offset = 0;
+    if(storage_file_open(rom_file, "/ext/kirby.gb", FSAM_READ, FSOM_OPEN_ALWAYS))
     {
-        if(storage_file_open(rom_file, "/ext/kirby.gb", FSAM_READ, FSOM_OPEN_ALWAYS))
+        while(true)
         {
-            if(!storage_file_seek(rom_file, offset, SEEK_SET))
+            storage_file_seek(rom_file, offset, SEEK_SET);
+            storage_file_read(rom_file, ROM, 1);
+
+            // debug for if opcode was missed
+            if (advance == 0)
             {
+                furi_delay_ms(offset);
                 break;
             }
-
-        
-            if(!storage_file_read(rom_file, ROM, 16384))
+            
+            else
             {
-                break;
+                offset += advance;
             }
-
-            if (sizeof(ROM) <= 0)
-            {
-                break;
-            }
-
-            for (int i = 0; i < 16384; i++)
-            {
-                opcodes(ROM[i+offset]);
-            }
-
-            offset += 16384;
         }
     }
     
