@@ -1,1 +1,1 @@
-WIP GB Emulator for Flipper Zero Game Module, Kinda! :)
+Bringing emulation to platforms where emulation has never gone!
