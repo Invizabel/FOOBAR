@@ -1,3 +1,4 @@
+
 #ifndef JELLY_H
 #define JELLY_H
 
@@ -8,6 +9,7 @@ extern "C" {
 #include <stdbool.h>
 #include <cstddef>
 #include <stdint.h>
+#include <stdarg.h>
 
 int REG[8];
 
@@ -319,7 +321,7 @@ int readMem16(int addr)
 }
 
 
-int ld16(int a, int b, int c = -1)
+int ld16(int a = 0, int b = 0, int c = 0)
 {
     if (b == Immediate)
     {
@@ -338,9 +340,8 @@ int ld16(int a, int b, int c = -1)
         return 12;
     }
 
-    if (c == Immediate && c != -1)
+    if (c == Immediate)
     {
-
         REG[a] = readMem(PC + 2);
         REG[b] = readMem(PC + 1);
 
@@ -353,7 +354,7 @@ int ld16(int a, int b, int c = -1)
     return 8;
 }
 
-int ld_to_mem(int a, int b, int c)
+int ld_to_mem(int a = 0, int b = 0, int c = 0)
 {
     if (a == Immediate)
     {
@@ -372,7 +373,7 @@ int ld_to_mem(int a, int b, int c)
     return 8;
 }
 
-int inc16(int a, int b = -1)
+int inc16(int a = 0, int b = 0)
 {
     if (a == SPr)
     {
@@ -380,13 +381,8 @@ int inc16(int a, int b = -1)
         PC++;
         return 8;
     }
-    if (b != -1)
-    {
-        if (REG[b] == 255) REG[a]++;
-        REG[b]++;
-        PC++;
-        return 8;
-    }
+    if (REG[b] == 255) REG[a]++;
+    REG[b]++;
     PC++;
     return 8;
 }
@@ -474,7 +470,7 @@ int dec(int r)
     return incdec(r, -1);
 }
 
-int ld(int a, int b)
+int ld(int a = 0, int b = 0)
 {
     if (b == Immediate)
     {
@@ -502,7 +498,8 @@ int ld_imm_sp(void)
     return 20;
 }
 
-int addHL(int a, int b = -1) {
+int addHL(int a = 0, int b = 0)
+{
     if (a == SPr) {
         unsigned int c = (REG[L] + (SP & 0xFF)) > 255 ? 1 : 0;
         unsigned int h = REG[H] + (SP >> 8) + c;
@@ -513,22 +510,17 @@ int addHL(int a, int b = -1) {
         PC++;
         return 8;
     }
-    else if (b != -1)
-    {
-        unsigned int c = (REG[L] + REG[b]) > 255 ? 1 : 0;
-        unsigned int h = REG[H] + REG[a] + c;
-        FLAGS.H = ((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10 ? 1 : 0;
-        REG[H] = h & 0xFF;
-        FLAGS.C = h > 255 ? 1 : 0;
-        FLAGS.N = 0;
-        PC++;
-        return 8;
-    }
+    unsigned int c = (REG[L] + REG[b]) > 255 ? 1 : 0;
+    unsigned int h = REG[H] + REG[a] + c;
+    FLAGS.H = ((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10 ? 1 : 0;
+    REG[H] = h & 0xFF;
+    FLAGS.C = h > 255 ? 1 : 0;
+    FLAGS.N = 0;
     PC++;
     return 8;
 }
 
-int ld_from_mem(int a, int b, int c)
+int ld_from_mem(int a = 0, int b = 0, int c = 0)
 {
     if (b == Immediate)
     {
@@ -544,7 +536,7 @@ int ld_from_mem(int a, int b, int c)
     }
 }
 
-int dec16(int a, int b = -1)
+int dec16(int a = 0, int b = 0)
 {
     if (a == SPr)
     {
@@ -552,13 +544,8 @@ int dec16(int a, int b = -1)
         PC++;
         return 8;
     }
-    else if (b != -1)
-    {
-        if (REG[b] == 0) REG[a]--;
-        REG[b]--;
-        PC++;
-        return 8;
-    }
+    if (REG[b] == 0) REG[a]--;
+    REG[b]--;
     PC++;
     return 8;
 }
@@ -585,7 +572,7 @@ int jr(void)
     return 12;
 }
 
-int ldi(int a, int b)
+int ldi(int a = 0, int b = 0)
 {
     if (a == HL)
     {
@@ -655,7 +642,7 @@ int jrNC(void)
     return 12;
 }
 
-int ldd(int a, int b)
+int ldd(int a = 0, int b = 0)
 {
     uint16_t addr = (REG[H] << 8) | REG[L];
     if (a == HL)
@@ -952,6 +939,11 @@ int inc_a(void)
     return inc(A);
 }
 
+int dec_a(void)
+{
+    return dec(A);
+}
+
 // main opcodes:
 void run_opcode(void)
 {
@@ -1019,6 +1011,7 @@ void run_opcode(void)
     opcodes[0x3A] = ldd_a_hl;
     opcodes[0x3B] = dec16_spr;
     opcodes[0x3C] = inc_a;
+    opcodes[0x3D] = dec_a;
 }
 
 #ifdef __cplusplus
