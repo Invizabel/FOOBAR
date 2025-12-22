@@ -319,7 +319,7 @@ int readMem16(int addr)
 }
 
 
-int ld16(int a, int b, int c)
+int ld16(int a, int b, int c = 0)
 {
     if (b == Immediate)
     {
@@ -372,7 +372,7 @@ int ld_to_mem(int a, int b, int c)
     return 8;
 }
 
-int inc16(int a, int b)
+int inc16(int a, int b = 0)
 {
     if (a == SPr)
     {
@@ -386,10 +386,10 @@ int inc16(int a, int b)
     return 8;
 }
 
-int shift_process(int op, unsigned char a)
+int shift_process(int op, int a)
 {
-    unsigned char bit7 = a >> 7;
-    unsigned char bit0 = a & 1;
+    int bit7 = a >> 7;
+    int bit0 = a & 1;
 
     if (op == RLC)
     {
@@ -634,6 +634,34 @@ int cpl(void)
     return 4;
 }
 
+int jrNC(void)
+{
+    if (FLAGS.C)
+    {
+        PC += 2; return 8;
+    }
+    PC += 2 + signedOffset(readMem(PC + 1));
+    return 12;
+}
+
+int ldd(int a, int b)
+{
+    uint16_t addr = (REG[H] << 8) | REG[L];
+    if (a == HL)
+    {
+        writeMem(addr, REG[A]);
+        if (REG[L] == 0) REG[H]--;
+        REG[L]--;
+    }
+    else
+    {
+        REG[A] = readMem(addr);
+        if (REG[L] == 0) REG[H]--;
+        REG[L]--;
+    }
+    PC++;
+    return 8;
+}
 
 int stop()
 {
@@ -815,17 +843,17 @@ int ld_h_immediate(void)
 
 int addhl_h_l(void)
 {
-    return addHL(H,L);
+    return addHL(H, L);
 }
 
 int ldi_a_hl(void)
 {
-    return ldi(A,HL);
+    return ldi(A, HL);
 }
 
 int dec16_h_l(void)
 {
-    return dec16(H,L);
+    return dec16(H, L);
 }
 
 int inc_l(void)
@@ -841,6 +869,21 @@ int dec_l(void)
 int ld_l_immediate(void)
 {
     return ld(L, Immediate);
+}
+
+int ld16_spr_immediate(void)
+{
+    return ld16(SPr, Immediate);
+}
+
+int ldd_hl_a(void)
+{
+    return ldd(HL, A);
+}
+
+int inc16_spr(void)
+{
+    return inc16(SPr);
 }
 
 // main opcodes:
@@ -896,6 +939,11 @@ void run_opcode(void)
     opcodes[0x2D] = dec_l;
     opcodes[0x2E] = ld_l_immediate;
     opcodes[0x2F] = cpl;
+
+    opcodes[0x30] = jrNC;
+    opcodes[0x31] = ld16_spr_immediate;
+    opcodes[0x32] = ldd_hl_a;
+    opcodes[0x33] = inc16_spr;
 }
 
 #ifdef __cplusplus
