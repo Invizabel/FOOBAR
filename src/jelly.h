@@ -24,13 +24,13 @@ int SP = 0;
 bool IME = false; // Interrupt master enable
 bool cpu_halted = false;
 
-const uint8_t A = 0b111;
-const uint8_t B = 0b000;
-const uint8_t C = 0b001;
-const uint8_t D = 0b010;
-const uint8_t E = 0b011;
-const uint8_t H = 0b100;
-const uint8_t L = 0b101;
+uint8_t A = 0b111;
+uint8_t B = 0b000;
+uint8_t C = 0b001;
+uint8_t D = 0b010;
+uint8_t E = 0b011;
+uint8_t H = 0b100;
+uint8_t L = 0b101;
 
 uint8_t MEM[0x10000];
 uint8_t *FirstROMPage = NULL;
@@ -552,11 +552,88 @@ int dec16(int a, int b)
     }
 }
 
+int signedOffset(unsigned char b)
+{
+    return b > 127 ? b - 256 : b;
+}
+
+int jrNZ(void)
+{
+    if (FLAGS.Z)
+    {
+        PC += 2;
+        return 8;
+    }
+    PC += 2 + signedOffset(readMem(PC + 1));
+    return 12;
+}
+
 int jr(void)
 {
     PC += 2 + signedOffset(readMem(PC + 1));
     return 12;
 }
+
+int ldi(int a, int b)
+{
+    if (a == HL)
+    {
+        writeMem((REG[H] << 8) + REG[L], REG[A]);
+        if (REG[L] == 255) REG[H]++;
+        REG[L]++;
+        PC++;
+        return 8;
+    }
+    REG[A] = readMem((REG[H] << 8) + REG[L]);
+    if (REG[L] == 255) REG[H]++;
+    REG[L]++;
+    PC++;
+    return 8;
+}
+
+int daa(void)
+{
+    if (FLAGS.N)
+    {
+        if (FLAGS.C) A -= 0x60;
+        if (FLAGS.H) A -= 0x06;
+    }
+    else
+    {
+        if (A > 0x99 || FLAGS.C)
+        {
+            A += 0x60;
+            FLAGS.C = 1;
+        }
+        if ((A & 0x0F) > 0x09 || FLAGS.H)
+        {
+            A += 0x06;
+        }
+    }
+    FLAGS.Z = (A == 0);
+    FLAGS.H = 0;
+    PC++;
+    return 4;
+}
+
+int jrZ(void) {
+    if (!FLAGS.Z) {
+        PC += 2;
+        return 8;
+    }
+    PC += 2 + signedOffset(readMem(PC + 1));
+    return 12;
+}
+
+int cpl(void)
+{
+    REG[A] = ~REG[A];
+    FLAGS.N = 1;
+    FLAGS.H = 1;
+    PC++;
+    return 4;
+}
+
 
 int stop()
 {
@@ -568,17 +645,17 @@ int stop()
 // helper functions:
 int ld16_b_c_immediate(void)
 {
-    return ld16(B,C,Immediate);
+    return ld16(B, C, Immediate);
 }
 
 int ld_to_mem_b_c_a(void)
 {
-    return ld_to_mem(B,C,A);
+    return ld_to_mem(B, C, A);
 }
 
 int inc16_b_c(void)
 {
-    return inc16(B,C);
+    return inc16(B, C);
 }
 
 int inc_b(void)
@@ -603,7 +680,7 @@ int shift_fast_rlc_a(void)
 
 int addhl_b_c(void)
 {
-    return addHL(B,C);
+    return addHL(B, C);
 }
 
 int ld_from_mem_a_b_c(void)
@@ -613,7 +690,7 @@ int ld_from_mem_a_b_c(void)
 
 int dec16_b_c(void)
 {
-    return dec16(B,C);
+    return dec16(B, C);
 }
 
 int inc_c(void)
@@ -638,12 +715,12 @@ int shift_fast_rrc_a(void)
 
 int ld16_d_e_immediate(void)
 {
-    return ld16(D,E,Immediate);
+    return ld16(D, E, Immediate);
 }
 
 int ld_to_mem_d_e_a(void)
 {
-    return ld_to_mem(D,E,A);
+    return ld_to_mem(D, E, A);
 }
 
 int inc16_d_e(void)
@@ -653,7 +730,7 @@ int inc16_d_e(void)
 
 int inc_d(void)
 {
-    return inc16(D,E);
+    return inc16(D, E);
 }
 
 int dec_d(void)
@@ -669,6 +746,101 @@ int ld_d_immediate(void)
 int shift_fast_rl_a(void)
 {
     return shift_fast(RL, A);
+}
+
+int addhl_d_e(void)
+{
+    return addHL(D, E);
+}
+
+int ld_from_mem_a_d_e(void)
+{
+    return ld_from_mem(A, D, E);
+}
+
+int dec16_d_e(void)
+{
+    return dec16(D, E);
+}
+
+int inc_e(void)
+{
+    return inc(E);
+}
+
+int dec_e(void)
+{
+    return dec(E);
+}
+
+int ld_e_immediate(void)
+{
+    return ld(E, Immediate);
+}
+
+int shift_fast_rr_a(void)
+{
+    return shift_fast(RR, A);
+}
+
+int ld16_h_l_immediate(void)
+{
+    return ld16(H, L, Immediate);
+}
+
+int ldi_hl_a(void)
+{
+    return ldi(HL, A);
+}
+
+int inc16_h_l(void)
+{
+    return inc16(H, L);
+}
+
+int inc_h(void)
+{
+    return inc(H);
+}
+
+int dec_h(void)
+{
+    return dec(H);
+}
+
+int ld_h_immediate(void)
+{
+    return ld(H, Immediate);
+}
+
+int addhl_h_l(void)
+{
+    return addHL(H,L);
+}
+
+int ldi_a_hl(void)
+{
+    return ldi(A,HL);
+}
+
+int dec16_h_l(void)
+{
+    return dec16(H,L);
+}
+
+int inc_l(void)
+{
+    return inc(L);
+}
+
+int dec_l(void)
+{
+    return dec(L);
+}
+
+int ld_l_immediate(void)
+{
+    return ld(L, Immediate);
 }
 
 // main opcodes:
@@ -700,6 +872,30 @@ void run_opcode(void)
     opcodes[0x16] = ld_d_immediate;
     opcodes[0x17] = shift_fast_rl_a;
     opcodes[0x18] = jr;
+    opcodes[0x19] = addhl_d_e;
+    opcodes[0x1A] = ld_from_mem_a_d_e;
+    opcodes[0x1B] = dec16_d_e;
+    opcodes[0x1C] = inc_e;
+    opcodes[0x1D] = dec_e;
+    opcodes[0x1E] = ld_e_immediate;
+    opcodes[0x1F] = shift_fast_rr_a;
+
+    opcodes[0x20] = jrNZ;
+    opcodes[0x21] = ld16_h_l_immediate;
+    opcodes[0x22] = ldi_hl_a;
+    opcodes[0x23] = inc16_h_l;
+    opcodes[0x24] = inc_h;
+    opcodes[0x25] = dec_h;
+    opcodes[0x26] = ld_h_immediate;
+    opcodes[0x27] = daa;
+    opcodes[0x28] = jrZ;
+    opcodes[0x29] = addhl_h_l;
+    opcodes[0x2A] = ldi_a_hl;
+    opcodes[0x2B] = dec16_h_l;
+    opcodes[0x2C] = inc_l;
+    opcodes[0x2D] = dec_l;
+    opcodes[0x2E] = ld_l_immediate;
+    opcodes[0x2F] = cpl;
 }
 
 #ifdef __cplusplus
