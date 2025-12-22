@@ -41,7 +41,7 @@ uint8_t cartRAM[0x8000];
 int RAMbank = 0;
 int RAMbankoffset = RAMbank*0x2000 - 0xA000;
 bool RAMenabled = false;
-int MBCRamMode = 0;
+int MBCRamMode ;
 int divPrescaler = 0;
 int timerPrescaler = 0;
 int timerLength = 1;
@@ -319,7 +319,7 @@ int readMem16(int addr)
 }
 
 
-int ld16(int a, int b, int c = 0)
+int ld16(int a, int b, int c = -1)
 {
     if (b == Immediate)
     {
@@ -338,7 +338,7 @@ int ld16(int a, int b, int c = 0)
         return 12;
     }
 
-    if (c == Immediate)
+    if (c == Immediate && c != -1)
     {
 
         REG[a] = readMem(PC + 2);
@@ -372,7 +372,7 @@ int ld_to_mem(int a, int b, int c)
     return 8;
 }
 
-int inc16(int a, int b = 0)
+int inc16(int a, int b = -1)
 {
     if (a == SPr)
     {
@@ -380,8 +380,13 @@ int inc16(int a, int b = 0)
         PC++;
         return 8;
     }
-    if (REG[b] == 255) REG[a]++;
-    REG[b]++;
+    if (b != -1)
+    {
+        if (REG[b] == 255) REG[a]++;
+        REG[b]++;
+        PC++;
+        return 8;
+    }
     PC++;
     return 8;
 }
@@ -497,7 +502,7 @@ int ld_imm_sp(void)
     return 20;
 }
 
-int addHL(int a, int b) {
+int addHL(int a, int b = -1) {
     if (a == SPr) {
         unsigned int c = (REG[L] + (SP & 0xFF)) > 255 ? 1 : 0;
         unsigned int h = REG[H] + (SP >> 8) + c;
@@ -507,7 +512,9 @@ int addHL(int a, int b) {
         FLAGS.N = 0;
         PC++;
         return 8;
-    } else {
+    }
+    else if (b != -1)
+    {
         unsigned int c = (REG[L] + REG[b]) > 255 ? 1 : 0;
         unsigned int h = REG[H] + REG[a] + c;
         FLAGS.H = ((REG[H] & 0x0F) + (REG[a] & 0x0F) + c) & 0x10 ? 1 : 0;
@@ -517,6 +524,8 @@ int addHL(int a, int b) {
         PC++;
         return 8;
     }
+    PC++;
+    return 8;
 }
 
 int ld_from_mem(int a, int b, int c)
@@ -535,7 +544,7 @@ int ld_from_mem(int a, int b, int c)
     }
 }
 
-int dec16(int a, int b)
+int dec16(int a, int b = -1)
 {
     if (a == SPr)
     {
@@ -543,13 +552,15 @@ int dec16(int a, int b)
         PC++;
         return 8;
     }
-    else
+    else if (b != -1)
     {
         if (REG[b] == 0) REG[a]--;
         REG[b]--;
         PC++;
         return 8;
     }
+    PC++;
+    return 8;
 }
 
 int signedOffset(unsigned char b)
@@ -661,6 +672,26 @@ int ldd(int a, int b)
     }
     PC++;
     return 8;
+}
+
+int scf()
+{
+    FLAGS.N = 0;
+    FLAGS.H = 0;
+    FLAGS.C = 1;
+    PC++;
+    return 4;
+}
+
+int jrC(void)
+{
+    if (!FLAGS.C)
+    {
+        PC += 2;
+        return 8;
+    }
+    PC += 2 + signedOffset(readMem(PC + 1));
+    return 12;
 }
 
 int stop()
@@ -886,6 +917,41 @@ int inc16_spr(void)
     return inc16(SPr);
 }
 
+int inc_hl()
+{
+    return inc(HL);
+}
+
+int dec_hl(void)
+{
+    return dec(HL);
+}
+
+int ld_to_mem_h_l_immediate(void)
+{
+    return ld_to_mem(H, L, Immediate);
+}
+
+int addhl_spr(void)
+{
+    return addHL(SPr);
+}
+
+int ldd_a_hl(void)
+{
+    return ldd(A, HL);
+}
+
+int dec16_spr(void)
+{
+    return dec16(SPr);
+}
+
+int inc_a(void)
+{
+    return inc(A);
+}
+
 // main opcodes:
 void run_opcode(void)
 {
@@ -944,6 +1010,15 @@ void run_opcode(void)
     opcodes[0x31] = ld16_spr_immediate;
     opcodes[0x32] = ldd_hl_a;
     opcodes[0x33] = inc16_spr;
+    opcodes[0x34] = inc_hl;
+    opcodes[0x35] = dec_hl;
+    opcodes[0x36] = ld_to_mem_h_l_immediate;
+    opcodes[0x37] = scf;
+    opcodes[0x38] = jrC;
+    opcodes[0x39] = addhl_spr;
+    opcodes[0x3A] = ldd_a_hl;
+    opcodes[0x3B] = dec16_spr;
+    opcodes[0x3C] = inc_a;
 }
 
 #ifdef __cplusplus
