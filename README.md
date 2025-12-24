@@ -1,1 +1,1 @@
-Bringing emulation to platforms where emulation has never gone!
+Bringing gameboy emulation to platforms where gameboy emulation has never gone!
