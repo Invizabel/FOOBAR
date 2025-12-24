@@ -1,0 +1,12 @@
+App(
+    appid="foobar",
+    name="Foobar GB",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="main",
+    fap_description="Foobar GB is an experimental gb emulator",
+    fap_author="Invizabel",
+    fap_weburl="https://github.com/Invizabel/foobar",
+    fap_icon="assets/icon.png",
+    fap_category="Games",
+    fap_version="1.0"
+)
