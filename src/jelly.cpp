@@ -7,7 +7,7 @@
 
 extern "C"
 {
-    #include "jelly.h"
+    #include "core.h"
 }
 
 bool is_title = false;
