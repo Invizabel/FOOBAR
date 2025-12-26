@@ -22,20 +22,27 @@ uint16_t PC = 0;
 // memory, rom,  and cpu
 bool ram_enabled = false;
 uint8_t ROM[512];
+uint8_t FirstROMPage[512];
 uint8_t REG[8];
-uint8_t MEM[8192];
-uint8_t cart_ram[8192];
-uint16_t rom_bank = 1;
-uint16_t rom_bank_offset = 0x4000; 
+uint8_t MEM[16384];
+uint8_t cart_ram[32768];
 uint16_t bank_size = 8192;
 uint16_t ram_bank = 0; 
 uint16_t ram_bank_offset = 0;
+uint16_t rom_bank = 1;
+uint16_t rom_bank_offset = 0x4000;
 uint16_t Immediate = 257;
 // io
 uint8_t joypad_dpad = 0xef; // 0 = pressed
 uint8_t joypad_buttons = 0xdf; // 0 = pressed
 uint8_t keys_dpad = 0xef; // 0 = pressed
 uint8_t keys_buttons=0xdf; // 0 = pressed
+// video and sound (sound is todo)
+bool lcd_enabled = false;
+uint8_t lcd_scan = 0;
+// misc.
+bool timer_enable = false;
+uint16_t timerPrescaler = 0;
 
 typedef struct
 {
@@ -95,24 +102,23 @@ uint16_t bank_hopping(uint16_t addr)
 
 uint16_t read_mem(uint16_t addr)
 {
-    addr = bank_hopping(addr);
-    if (addr <= 8191 && ram_bank <= 1)
+    if (addr <= 8191)
     {
         return ROM[addr];
     }
-    if (addr <= 8191 && ram_bank <= 3)
+    if (addr <= 8191)
     {
         return ROM[addr + rom_bank_offset];
     }
 
     // Cartridge RAM
-    if (addr >= 8191 && addr <= 8192 && ram_bank >= 4 && ram_bank <= 5)
+    if (addr >= 8191 && addr <= 8192)
     {
         return cart_ram[addr + ram_bank_offset];
     }
 
     // Joypad
-    if (addr == 7936 && ram_bank == 7)
+    if (addr == 7936)
     {
         if (ram_bank == 7 && MEM[7936] & 0x20)
         {
@@ -138,20 +144,90 @@ uint16_t read_mem_16(uint16_t addr)
 
 void write_mem(uint16_t addr, uint8_t data)
 {
-    addr = bank_hopping(addr);
-    if (addr <= 8191 && ram_bank <= 3)
+    if (addr <= 8191)
     { 
         doMBC(addr, data);
         return;
     }
-    if (addr >= 8192 && addr <= 8191 && ram_bank >= 4 && ram_bank <= 5 && ram_enabled)
+    if (addr >= 8192 && addr <= 8191 && ram_enabled)
     {
         cart_ram[addr + ram_bank_offset] = data;
         return;
     }
+    // DIV register: reset
+    if (addr == 7940)
+    {
+        MEM[7940] = 0;
+        return;
+    }
+    // Timer control
+    if (addr == 7943)
+    {
+        timer_enable = ((data & (1 << 2)) != 0);
+        uint16_t timer_length = (uint16_t[]){1024, 16, 64, 256}[data & 0x3];
+        timerPrescaler = timer_length; // +cycles for this instruction?
+        MEM[addr] = 0xF8 | data;
+        return;
+    }
+
+    // LCD control
+    if (addr == 8000)
+    {
+        uint16_t cc = data & (1 << 7);
+        if (lcd_enabled != cc)
+        {
+            lcd_enabled = !!cc;
+            if (!lcd_enabled)
+            {
+                // Disabling the display sets it to mode 1
+                // this should also probably set all pixels to white
+                lcd_scan = 0;
+                MEM[8001] = (MEM[8001] & 0xFC) + 1;
+            }
+        }
+    }
+    if (addr == 8001)
+    {
+        // don't overwrite the lowest two bits (mode)
+        MEM[8001] &= 0x3;
+        data &= 0xFC;
+        MEM[8001] |= 0x80 | data; // BGB has highest bit always set
+        return;
+    }
+
+    // LY - write causes reset
+    if (addr == 8004)
+    {
+        MEM[8004] = 0;
+        return;
+    }
+
+    // FF46 - DMA - DMA Transfer and Start Address (W)
+    if (addr == 8006)
+    {
+        uint8_t st = data << 8;
+        for (uint8_t i = 0; i <= 0x9F; i++)
+        {
+            MEM[7680 + i] = read_mem(st + i);
+            return;
+        }
+    }
+
+    // disable bootrom
+    if (addr == 8016)
+    {
+        for (uint16_t i = 0; i < 256; i++)
+        {
+            ROM[i] = FirstROMPage[i];
+            return;
+        }
+
+        MEM[addr] = data;
+    }
 }
 
-uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c){
+uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
+{
     if (a == Immediate)
     {
         write_mem(read_mem(PC + 1) + (read_mem(PC + 2) << 8), REG[b]);
@@ -240,7 +316,7 @@ void opcodes(uint8_t opcode)
     }
     if (opcode == 0x02)
     {
-        ld_to_mem(B, C, A);
+        ld_to_mem(B,C,A);
     }
 }
 
