@@ -19,8 +19,10 @@ uint16_t DE = 259;
 uint16_t HL = 0b110;
 uint16_t SP = 0;
 uint16_t PC = 0;
-// memory, rom,  and cpu
+uint16_t SPr = 260;
+// memory, rom, and cpu
 bool ram_enabled = false;
+uint8_t MBCRamMode = 0;
 uint8_t ROM[512];
 uint8_t FirstROMPage[512];
 uint8_t REG[8];
@@ -43,6 +45,8 @@ uint8_t lcd_scan = 0;
 // misc.
 bool timer_enable = false;
 uint16_t timerPrescaler = 0;
+// client side parameters that need to be set by the client
+int rom_length = 512;
 
 typedef struct
 {
@@ -100,7 +104,88 @@ uint16_t bank_hopping(uint16_t addr)
     return addr;
 }
 
-uint16_t read_mem(uint16_t addr)
+void doMBC(uint16_t addr, uint8_t data)
+{
+
+    switch (ROM[0x147])
+    {
+        // Cartridge Type = ROM[0x147]
+
+        case 0: // ROM ONLY
+        // do any type 0 carts have switchable ram?
+        break;
+
+        case 0x01: //  MBC1
+        case 0x02: //  MBC1+RAM
+        case 0x03: //  MBC1+RAM+BATTERY
+        if (addr <= 0x1FFF)
+        {
+            ram_enabled = ((data & 0x0F) == 0xA);
+        }
+
+        else if (addr <= 0x3FFF)
+        {
+            data &= 0x1F;
+            if (data == 0)
+            {
+                data = 1; // MBC1 translates bank 0 to bank 1 (apparently regardless of upper bits)
+            }
+            // set lowest 5 bits of bank number
+            rom_bank = (rom_bank & 0xE0) | (data & 0x1F);
+            rom_bank_offset = (rom_bank - 1) * 0x4000 % rom_length;
+        }
+        else if (addr <= 0x5fff)
+        {
+            data &= 0x3;
+            if (MBCRamMode == 0)
+            {
+                rom_bank = (rom_bank & 0x1F) | (data << 5);
+                rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
+            }
+            else
+            {
+                ram_bank = data;
+                ram_bank_offset = ram_bank * 0x2000 - 0xA000;
+            }
+        }
+        else
+        {
+            MBCRamMode = data&1;
+            if (MBCRamMode == 0)
+            {
+                ram_bank=0;
+                ram_bank_offset = ram_bank * 0x2000 - 0xA000;
+            }
+            else
+            {
+                rom_bank &= 0x1F;
+                rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
+            }
+        }
+        break;
+    }
+}
+
+// 16 bit inc / dec affect no flags
+int inc16(uint8_t a, uint8_t b)
+{
+    if (a == SPr)
+    {
+        SP += 1;
+        PC += 1;
+        return 8;
+    }
+    if (REG[b] == 255)
+    {
+        REG[a] += 1;
+    }
+    
+    REG[b] += 1;
+    PC += 1;
+    return 8;
+}
+
+int read_mem(uint16_t addr)
 {
     if (addr <= 8191)
     {
@@ -137,7 +222,7 @@ uint16_t read_mem(uint16_t addr)
     return MEM[addr];
 }
 
-uint16_t read_mem_16(uint16_t addr)
+int read_mem_16(uint16_t addr)
 {
     return ((uint16_t)read_mem(addr + 1) << 8) | read_mem(addr);
 }
@@ -226,7 +311,7 @@ void write_mem(uint16_t addr, uint8_t data)
     }
 }
 
-uint8_t ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
+int ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
 {
     if (a == Immediate)
     {
@@ -317,6 +402,10 @@ void opcodes(uint8_t opcode)
     if (opcode == 0x02)
     {
         ld_to_mem(B,C,A);
+    }
+    if (opcode == 0x03)
+    {
+        inc16(B,C);
     }
 }
 
