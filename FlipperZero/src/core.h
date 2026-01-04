@@ -2,49 +2,48 @@
 #define JELLY_H
 
 #include <stdbool.h>
-#include <stdint.h>
 
 // global vars:
 // registers:
-uint8_t A = 0b111;
-uint8_t B = 0b000;
-uint8_t C = 0b001;
-uint8_t D = 0b010;
-uint8_t E = 0b011;
-uint8_t H = 0b011;
-uint8_t L = 0b101;
-uint16_t AF;
-uint16_t BC = 258;
-uint16_t DE = 259;
-uint16_t HL = 0b110;
-uint16_t SP = 0;
-uint16_t PC = 0;
-uint16_t SPr = 260;
+int A = 0b111;
+int B = 0b000;
+int C = 0b001;
+int D = 0b010;
+int E = 0b011;
+int H = 0b011;
+int L = 0b101;
+int AF;
+int BC = 258;
+int DE = 259;
+int HL = 0b110;
+int SP = 0;
+int PC = 0;
+int SPr = 260;
 // memory, rom, and cpu
 bool ram_enabled = false;
-uint8_t MBCRamMode = 0;
-uint8_t ROM[512];
-uint8_t FirstROMPage[512];
-uint8_t REG[8];
-uint8_t MEM[16384];
-uint8_t cart_ram[32768];
-uint16_t bank_size = 8192;
-uint16_t ram_bank = 0; 
-uint16_t ram_bank_offset = 0;
-uint16_t rom_bank = 1;
-uint16_t rom_bank_offset = 0x4000;
-uint16_t Immediate = 257;
+int MBCRamMode = 0;
+int ROM[512];
+int FirstROMPage[512];
+int REG[8];
+int MEM[16384];
+int cart_ram[32768];
+int bank_size = 8192;
+int ram_bank = 0; 
+int ram_bank_offset = 0;
+int rom_bank = 1;
+int rom_bank_offset = 0x4000;
+int Immediate = 257;
 // io
-uint8_t joypad_dpad = 0xef; // 0 = pressed
-uint8_t joypad_buttons = 0xdf; // 0 = pressed
-uint8_t keys_dpad = 0xef; // 0 = pressed
-uint8_t keys_buttons=0xdf; // 0 = pressed
+int joypad_dpad = 0xef; // 0 = pressed
+int joypad_buttons = 0xdf; // 0 = pressed
+int keys_dpad = 0xef; // 0 = pressed
+int keys_buttons=0xdf; // 0 = pressed
 // video and sound (sound is todo)
 bool lcd_enabled = false;
-uint8_t lcd_scan = 0;
+int lcd_scan = 0;
 // misc.
 bool timer_enable = false;
-uint16_t timerPrescaler = 0;
+int timerPrescaler = 0;
 // client side parameters that need to be set by the client
 int rom_length = 512;
 
@@ -61,13 +60,13 @@ typedef struct
     char title[16];
 }   title_array;
 
-title_array read_title(uint8_t ROM[512])
+title_array read_title(int ROM[512])
 {
     title_array t = {0};
     int count = 0;
     for (int i = 0; i < 16; i++)
     {
-        uint8_t c = ROM[0x0134 + i];
+        int c = ROM[0x0134 + i];
         if (c == 0x00)
         {
             t.title[count++] = '\n';
@@ -79,10 +78,10 @@ title_array read_title(uint8_t ROM[512])
     return t;
 }
 
-bool verify_checksum(uint8_t ROM[512])
+bool verify_checksum(int ROM[512])
 {
-    uint8_t checksum = 0;
-    for (uint16_t address = 0x0134; address <= 0x014C; address++)
+    int checksum = 0;
+    for (int address = 0x0134; address <= 0x014C; address++)
     {
         checksum = checksum - ROM[address] - 1;
     }
@@ -94,7 +93,7 @@ bool verify_checksum(uint8_t ROM[512])
     return false;
 }
 
-uint16_t bank_hopping(uint16_t addr)
+int bank_hopping(int addr)
 {
     while (addr > bank_size)
     {
@@ -104,7 +103,7 @@ uint16_t bank_hopping(uint16_t addr)
     return addr;
 }
 
-void doMBC(uint16_t addr, uint8_t data)
+void doMBC(int addr, int data)
 {
 
     switch (ROM[0x147])
@@ -167,7 +166,7 @@ void doMBC(uint16_t addr, uint8_t data)
 }
 
 // 16 bit inc / dec affect no flags
-int inc16(uint8_t a, uint8_t b)
+int inc16(int a, int b)
 {
     if (a == SPr)
     {
@@ -185,7 +184,7 @@ int inc16(uint8_t a, uint8_t b)
     return 8;
 }
 
-int read_mem(uint16_t addr)
+int read_mem(int addr)
 {
     if (addr <= 8191)
     {
@@ -222,12 +221,12 @@ int read_mem(uint16_t addr)
     return MEM[addr];
 }
 
-int read_mem_16(uint16_t addr)
+int read_mem_16(int addr)
 {
-    return ((uint16_t)read_mem(addr + 1) << 8) | read_mem(addr);
+    return ((int)read_mem(addr + 1) << 8) | read_mem(addr);
 }
 
-void write_mem(uint16_t addr, uint8_t data)
+void write_mem(int addr, int data)
 {
     if (addr <= 8191)
     { 
@@ -249,7 +248,7 @@ void write_mem(uint16_t addr, uint8_t data)
     if (addr == 7943)
     {
         timer_enable = ((data & (1 << 2)) != 0);
-        uint16_t timer_length = (uint16_t[]){1024, 16, 64, 256}[data & 0x3];
+        int timer_length = (int[]){1024, 16, 64, 256}[data & 0x3];
         timerPrescaler = timer_length; // +cycles for this instruction?
         MEM[addr] = 0xF8 | data;
         return;
@@ -258,7 +257,7 @@ void write_mem(uint16_t addr, uint8_t data)
     // LCD control
     if (addr == 8000)
     {
-        uint16_t cc = data & (1 << 7);
+        int cc = data & (1 << 7);
         if (lcd_enabled != cc)
         {
             lcd_enabled = !!cc;
@@ -290,8 +289,8 @@ void write_mem(uint16_t addr, uint8_t data)
     // FF46 - DMA - DMA Transfer and Start Address (W)
     if (addr == 8006)
     {
-        uint8_t st = data << 8;
-        for (uint8_t i = 0; i <= 0x9F; i++)
+        int st = data << 8;
+        for (int i = 0; i <= 0x9F; i++)
         {
             MEM[7680 + i] = read_mem(st + i);
             return;
@@ -301,7 +300,7 @@ void write_mem(uint16_t addr, uint8_t data)
     // disable bootrom
     if (addr == 8016)
     {
-        for (uint16_t i = 0; i < 256; i++)
+        for (int i = 0; i < 256; i++)
         {
             ROM[i] = FirstROMPage[i];
             return;
@@ -311,7 +310,27 @@ void write_mem(uint16_t addr, uint8_t data)
     }
 }
 
-int ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
+// nop (No OPerations)
+void nop(void)
+{
+    PC += 1;
+}
+
+int ld_from_mem(int a, int b, int c)
+{
+    if (b == Immediate)
+    {
+        REG[a] = read_mem(read_mem(PC + 1) + (read_mem(PC + 2) << 8));
+        PC += 3;
+        return 16;
+    }
+
+    REG[a] = read_mem((REG[b] << 8) + REG[c]);
+    PC += 1;
+    return 8;
+}
+
+int ld_to_mem(int a, int b, int c)
 {
     if (a == Immediate)
     {
@@ -330,14 +349,8 @@ int ld_to_mem(uint8_t a, uint8_t b, uint8_t c)
     return 8;
 }
 
-// nop (No OPerations)
-void nop(void)
-{
-    PC += 1;
-}
-
 // Load (copy) 8 bit
-uint8_t ld(uint8_t a, uint8_t b)
+int ld(int a, int b)
 { 
     if (b == Immediate)
     {
@@ -352,14 +365,14 @@ uint8_t ld(uint8_t a, uint8_t b)
 }
 
 // Load (copy) 16 bit
-uint16_t ld16(uint8_t a, uint8_t b, uint8_t c)
+int ld16(int a, int b, int c)
 {
     if (b == Immediate)
     {
         if (a == HL)
         {
             // mem to hl
-            uint16_t s = read_mem_16(read_mem( PC+1 ) + (read_mem( PC+2 )<<8));
+            int s = read_mem_16(read_mem( PC+1 ) + (read_mem( PC+2 )<<8));
 
             // high byte
             REG[H] = (s >> 8) & 0xFF;
@@ -389,7 +402,104 @@ uint16_t ld16(uint8_t a, uint8_t b, uint8_t c)
     return 8;
 }
 
-void opcodes(uint8_t opcode)
+// load with decrement
+int ldd(int a, int b)
+{
+    (void)b;
+    if (a == HL)
+    {
+        write_mem((REG[H] << 8) + REG[L], REG[A]);
+
+        if (REG[L] == 0)
+        {
+            REG[H] -= 1;
+        }
+        REG[L]-= 1;
+
+        PC += 1;
+        return 8;
+    }
+
+    REG[A] = read_mem((REG[H] << 8) + REG[L]);
+
+    if (REG[L] == 0)
+    {
+        REG[H] -= 1;
+    }
+    REG[L]-= 1;
+
+    PC += 1;
+    return 8;
+}
+
+// load with increment
+int ldi(int a, int b)
+{
+    (void)b;
+    if (a == HL)
+    {
+        write_mem((REG[H] << 8) + REG[L], REG[A]);
+
+        if (REG[L] == 255)
+        {
+            REG[H] += 1;
+        }
+
+        REG[L] += 1;
+
+        PC += 1;
+        return 8;
+    }
+
+    REG[A] = read_mem((REG[H] << 8) + REG[L]);
+
+    if (REG[L] == 255)
+    {
+        REG[H] += 1;
+    }
+
+    REG[L] += 1;
+    PC += 1;
+    return 8;
+}
+
+// LD A, (FF00 + C)
+int ldc(int a, int b)
+{
+    (void)b;
+    
+    if (a == A)
+    { 
+        REG[A] = read_mem(0xFF00 + REG[C]);
+        PC += 1;
+        return 8;
+    }
+
+    // LD (FF00+C), A
+    write_mem(0xFF00 + REG[C], REG[A]);
+    PC += 1;
+    return 8;
+}
+
+int ldh(int a, int b)
+{
+    (void)b;
+    
+    // LD A, (FF00 + n)
+    if (a == A)
+    {
+        REG[A] = read_mem(0xFF00 + read_mem(PC+1));
+        PC += 2;
+        return 12;
+    }
+    
+    // LD (FF00 + n), A
+    write_mem(0xFF00 + read_mem(PC+1), REG[A]);
+    PC += 2;
+    return 12;
+}
+
+void opcodes(int opcode)
 {
     if (opcode == 0x00)
     {

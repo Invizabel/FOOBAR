@@ -3,7 +3,6 @@
 #include <furi_hal.h>
 #include <gui/gui.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <storage/storage.h>
 #include "core.h"
 
@@ -14,7 +13,7 @@ title_array fetch_title()
 {
     Storage * storage = (Storage*)furi_record_open("storage");
     File* rom_file = storage_file_alloc(storage);
-    uint8_t ROM[512];
+    int ROM[512];
     title_array t = {0};
     if(storage_file_open(rom_file, "/ext/roms/Kirby_s Dream Land.gb", FSAM_READ, FSOM_OPEN_EXISTING))
     {
