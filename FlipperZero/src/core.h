@@ -44,6 +44,15 @@ int lcd_scan = 0;
 // misc.
 bool timer_enable = false;
 int timerPrescaler = 0;
+// parameters for ALU
+int ADD = 1;
+int ADC = 2;
+int SUB = 3;
+int SBC = 4;
+int AND = 5;
+int OR  = 6;
+int XOR = 7;
+int CP  = 8;
 // client side parameters that need to be set by the client
 int rom_length = 512;
 
@@ -53,7 +62,9 @@ typedef struct
     bool N;
     bool H;
     bool C;
-} flags;
+} Flags;
+
+Flags FLAGS;
 
 typedef struct
 {
@@ -101,6 +112,12 @@ int bank_hopping(int addr)
         ram_bank += 1;
     }
     return addr;
+}
+
+// nop (No OPerations)
+void nop(void)
+{
+    PC += 1;
 }
 
 void doMBC(int addr, int data)
@@ -165,25 +182,6 @@ void doMBC(int addr, int data)
     }
 }
 
-// 16 bit inc / dec affect no flags
-int inc16(int a, int b)
-{
-    if (a == SPr)
-    {
-        SP += 1;
-        PC += 1;
-        return 8;
-    }
-    if (REG[b] == 255)
-    {
-        REG[a] += 1;
-    }
-    
-    REG[b] += 1;
-    PC += 1;
-    return 8;
-}
-
 int read_mem(int addr)
 {
     if (addr <= 8191)
@@ -221,9 +219,12 @@ int read_mem(int addr)
     return MEM[addr];
 }
 
-int read_mem_16(int addr)
+int * read_mem_16(int addr)
 {
-    return ((int)read_mem(addr + 1) << 8) | read_mem(addr);
+    static int local[2];
+    local[0] = read_mem(addr + 1); // high
+    local[1] = read_mem(addr); // low
+    return local;
 }
 
 void write_mem(int addr, int data)
@@ -310,10 +311,10 @@ void write_mem(int addr, int data)
     }
 }
 
-// nop (No OPerations)
-void nop(void)
+void write_mem_16(int addr, int dataH, int dataL)
 {
-    PC += 1;
+    write_mem(addr, dataL);
+    write_mem(addr + 1, dataH);
 }
 
 int ld_from_mem(int a, int b, int c)
@@ -372,12 +373,12 @@ int ld16(int a, int b, int c)
         if (a == HL)
         {
             // mem to hl
-            int s = read_mem_16(read_mem( PC+1 ) + (read_mem( PC+2 )<<8));
+            int * s = read_mem_16(read_mem(PC + 1) + (read_mem(PC + 2) << 8));
 
             // high byte
-            REG[H] = (s >> 8) & 0xFF;
+            REG[H] = s[0];
             // low byte
-            REG[L] = s & 0xFF;
+            REG[L] = s[1];
 
             PC += 3;
             return 12;
@@ -496,6 +497,333 @@ int ldh(int a, int b)
     // LD (FF00 + n), A
     write_mem(0xFF00 + read_mem(PC+1), REG[A]);
     PC += 2;
+    return 12;
+}
+
+int ALU_process_8bit(int op, int b)
+{
+    int result = REG[A];
+    FLAGS.N = false;
+
+    if (op == ADD)
+    {
+        FLAGS.H = (((REG[A] & 0x0F) + (b & 0x0F)) & 0x10) != 0;
+        result += b;
+
+    }
+
+    else if (op == ADC)
+    {
+        FLAGS.H = (((REG[A] & 0x0F) + (b & 0x0F) + FLAGS.C) & 0x10) != 0;
+        result += b + FLAGS.C;
+
+    }
+
+    else if (op == SUB)
+    {
+        result -= b;
+        FLAGS.N = true;
+        FLAGS.H = (((REG[A] & 0x0F) - (b & 0x0F)) & 0x10) != 0;
+
+    }
+
+    else if (op == CP)
+    {
+        result -= b;
+        FLAGS.N = true;
+        FLAGS.H = (((REG[A] & 0x0F) - (b & 0x0F)) & 0x10) != 0;
+        FLAGS.Z = ((result & 0xFF) == 0);
+        FLAGS.C = (result > 255 || result < 0);
+        return REG[A];
+
+    }
+
+    else if (op == SBC)
+    {
+        result -= b + FLAGS.C;
+        FLAGS.N = true;
+        FLAGS.H = (((REG[A] & 0x0F) - (b & 0x0F) - FLAGS.C) & 0x10) != 0;
+
+    }
+
+    else if (op == AND)
+    {
+        result &= b;
+        FLAGS.H = true;
+
+    }
+
+    else if (op == OR)
+    {
+        result |= b;
+        FLAGS.H = false;
+
+    }
+
+    else if (op == XOR)
+    {
+        result ^= b;
+        FLAGS.H = false;
+    }
+
+    FLAGS.Z = ((result & 0xFF) == 0);
+    FLAGS.C = (result > 255 || result < 0);
+
+    return (int)(result & 0xFF);
+}
+
+int ALU(int op, int a, int b)
+{
+    (void)a;
+    if (b == Immediate)
+    {
+        REG[A] = ALU_process_8bit(op, read_mem(PC + 1));
+        PC += 2;
+        return 8;
+    }
+    
+    if (b == HL)
+    {
+        REG[A] = ALU_process_8bit(op, read_mem((REG[H] << 8) + REG[L]));
+        PC += 1;
+        return 8;
+    }
+    
+    REG[A] = ALU_process_8bit(op, REG[b]);
+    PC += 1;
+    return 4;
+}
+
+int incdec_process_8bit(int a, int offset)
+{
+    int result = a + offset;
+    FLAGS.H = !!(((a&0x0F) + offset) & 0x10);
+    FLAGS.N = offset == -1;
+    FLAGS.Z = ((result & 0xff) == 0);
+    return result;
+}
+
+int incdec(int r, int offset)
+{
+    if (r == HL)
+    {
+        write_mem((REG[H] << 8) + REG[L], incdec_process_8bit(read_mem((REG[H] << 8) + REG[L]), offset));
+        PC += 1;
+        return 12;
+    }
+
+    REG[r]=incdec_process_8bit(REG[r], offset);
+    PC += 1;
+    return 4;
+}
+
+int inc(int a)
+{
+    return incdec(a, 1);
+}
+
+int dec(int a)
+{
+    return incdec(a, -1);
+}
+
+// 16 bit inc / dec affect no flags
+int inc16(int a, int b)
+{
+    if (a == SPr)
+    {
+        SP += 1;
+        PC += 1;
+        return 8;
+    }
+    
+    if (REG[b] == 255)
+    {
+        REG[a] += 1;
+    }
+    
+    REG[b] += 1;
+    PC += 1;
+    return 8;
+}
+
+int dec16(int a, int b)
+{
+    if (a == SPr)
+    {
+        SP -= 1;
+        PC += 1;
+        return 8;
+    }
+    
+    if (REG[b] == 0)
+    {
+        REG[a] -= 1;
+    }
+    
+    REG[b] -= 1;
+    PC += 1;
+    return 8;
+}
+
+int signedOffset(int b)
+{
+    return (b > 127) ? (b - 256) : b;
+}
+
+int jrNZ()
+{
+    if (FLAGS.Z)
+    {
+        PC += 2;
+        return 8;
+    }
+
+    PC += 2 + signedOffset(read_mem(PC + 1));
+    return 12;
+}
+
+int jrNC()
+{
+    if (FLAGS.C)
+    {
+        PC += 2;
+        return 8;
+    }
+    
+    PC += 2 + signedOffset(read_mem(PC + 1));
+    return 12;
+}
+
+int jrZ()
+{
+    if (!FLAGS.Z)
+    {
+        PC+=2;
+        return 8;
+    }
+    
+    PC += 2 + signedOffset(read_mem(PC + 1));
+    return 12;
+}
+
+int jrC()
+{
+    if (!FLAGS.C)
+    {
+        PC+=2;
+        return 8;
+    }
+    
+    PC += 2 + signedOffset(read_mem(PC + 1));
+    return 12;
+}
+
+// unconditional relative
+int jr()
+{
+    PC += 2 + signedOffset(read_mem(PC + 1));
+    return 12;
+}
+
+// unconditional absolute
+int jp()
+{ 
+    PC = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+    return 16;
+}
+
+int jpNZ(void)
+{
+    if (FLAGS.Z)
+    {
+        PC += 3;
+        return 12;
+    }
+    
+    PC = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+    return 16;
+}
+
+int jpNC()
+{
+    if (FLAGS.C)
+    {
+        PC += 3;
+        return 12;
+    }
+    
+    PC = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+    return 16;
+}
+
+int jpZ()
+{
+    if (!FLAGS.Z)
+    {
+        PC += 3;
+        return 12;
+    }
+    
+    PC = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+    return 16;
+}
+
+int jpC()
+{
+    if (!FLAGS.C)
+    {
+        PC += 3;
+        return 12;
+    }
+    
+    PC = read_mem(PC + 1) + (read_mem(PC + 2) << 8);
+    return 16;
+}
+
+int jpHL()
+{
+    PC = (REG[H] << 8) + REG[L];
+    return 4;
+}
+
+int push(int a, int b)
+{
+    if (a == A)
+    {
+        int flags = (FLAGS.Z << 7) + (FLAGS.N << 6) + (FLAGS.H << 5) + (FLAGS.C << 4);
+        SP -= 2;
+        write_mem_16(SP, REG[A], flags);
+        PC += 1;
+        return 16;
+    }
+    
+    SP -= 2;
+    write_mem_16(SP, REG[a], REG[b]);
+    PC += 1;
+    return 16;
+}
+
+int pop(int a, int b)
+{
+    if (a == A)
+    {
+        int * s = read_mem_16(SP);
+        REG[A] = s[0];
+        FLAGS.Z = (s[1] & (1 << 7)) != 0;
+        FLAGS.N = (s[1] & (1 << 6)) != 0;
+        FLAGS.H = (s[1] & (1 << 5)) != 0;
+        FLAGS.C = (s[1] & (1 << 4)) != 0;
+        SP += 2;
+        PC += 1;
+        return 12;
+    }
+    
+    int * s = read_mem_16(SP);
+    REG[a] = s[0];
+    REG[b] = s[1];
+    SP += 2;
+    PC += 1;
     return 12;
 }
 
