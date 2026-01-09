@@ -13,9 +13,9 @@ title_array fetch_title()
 {
     Storage * storage = (Storage*)furi_record_open("storage");
     File* rom_file = storage_file_alloc(storage);
-    int ROM[512];
+    uint8_t ROM[512];
     title_array t = {0};
-    if(storage_file_open(rom_file, "/ext/roms/Kirby_s Dream Land.gb", FSAM_READ, FSOM_OPEN_EXISTING))
+    if(storage_file_open(rom_file, "/ext/Kirby_s Dream Land.gb", FSAM_READ, FSOM_OPEN_EXISTING))
     {
         storage_file_read(rom_file, ROM, 512);
         bool is_valid = verify_checksum(ROM);

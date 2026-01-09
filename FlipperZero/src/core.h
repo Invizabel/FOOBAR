@@ -1,7 +1,5 @@
-#ifndef JELLY_H
-#define JELLY_H
-
 #include <stdbool.h>
+#include <stdint.h>
 
 // global vars:
 // registers:
@@ -71,13 +69,13 @@ typedef struct
     char title[16];
 }   title_array;
 
-title_array read_title(int ROM[512])
+title_array read_title(uint8_t ROM[512])
 {
     title_array t = {0};
     int count = 0;
     for (int i = 0; i < 16; i++)
     {
-        int c = ROM[0x0134 + i];
+        uint8_t c = ROM[0x0134 + i];
         if (c == 0x00)
         {
             t.title[count++] = '\n';
@@ -89,9 +87,9 @@ title_array read_title(int ROM[512])
     return t;
 }
 
-bool verify_checksum(int ROM[512])
+bool verify_checksum(uint8_t ROM[512])
 {
-    int checksum = 0;
+    uint8_t checksum = 0;
     for (int address = 0x0134; address <= 0x014C; address++)
     {
         checksum = checksum - ROM[address] - 1;
@@ -122,63 +120,162 @@ void nop(void)
 
 void doMBC(int addr, int data)
 {
-
     switch (ROM[0x147])
     {
-        // Cartridge Type = ROM[0x147]
-
-        case 0: // ROM ONLY
-        // do any type 0 carts have switchable ram?
-        break;
-
-        case 0x01: //  MBC1
-        case 0x02: //  MBC1+RAM
-        case 0x03: //  MBC1+RAM+BATTERY
-        if (addr <= 0x1FFF)
-        {
-            ram_enabled = ((data & 0x0F) == 0xA);
-        }
-
-        else if (addr <= 0x3FFF)
-        {
-            data &= 0x1F;
-            if (data == 0)
+        case 0x00:
+	case 0x01:
+        case 0x02:
+        case 0x03:
+            if (addr <= 0x1FFF)
             {
-                data = 1; // MBC1 translates bank 0 to bank 1 (apparently regardless of upper bits)
+                ram_enabled = ((data & 0x0F) == 0xA);
             }
-            // set lowest 5 bits of bank number
-            rom_bank = (rom_bank & 0xE0) | (data & 0x1F);
-            rom_bank_offset = (rom_bank - 1) * 0x4000 % rom_length;
-        }
-        else if (addr <= 0x5fff)
-        {
-            data &= 0x3;
-            if (MBCRamMode == 0)
+
+            else if (addr <= 0x3FFF)
             {
-                rom_bank = (rom_bank & 0x1F) | (data << 5);
-                rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
+                data &= 0x1F;
+                if (data == 0)
+                {
+                    data = 1;
+                }
+
+                rom_bank = (rom_bank & 0xE0) | (data & 0x1F);
+                rom_bank_offset = (rom_bank - 1) * 0x4000 % rom_length;
+
             }
+
+            else if (addr <= 0x5fff)
+            {
+                data &= 0x3;
+                if (MBCRamMode == 0)
+                {
+                    rom_bank = (rom_bank & 0x1F) | (data << 5);
+                    rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
+                }
+
+                else
+                {
+                    ram_bank = data;
+                    ram_bank_offset = ram_bank * 0x2000 - 0xA000;
+                }
+            }
+
             else
             {
-                ram_bank = data;
+                MBCRamMode = data & 1;
+                if (MBCRamMode == 0)
+                {
+                    ram_bank = 0;
+                    ram_bank_offset = ram_bank * 0x2000 - 0xA000;
+                }
+
+                else
+                {
+                    rom_bank &= 0x1F;
+                    rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
+                }
+            }
+
+            break;
+
+        case 0x05:
+        case 0x06:
+            if (addr <= 0x1FFF)
+            {
+                if ((addr & 0x0100) == 0)
+                {
+                    ram_enabled = ((data & 0x0F) == 0xA);
+                }
+
+                else if (addr <= 0x3FFF)
+                {
+                    data &= 0x0F;
+                    if (data == 0)
+                    {
+                        data = 1;
+                    }
+                    
+                    rom_bank = data;
+                    rom_bank_offset = (rom_bank - 1) * 0x4000 % rom_length;
+                }
+            }
+
+            break;
+
+        case 0x11:
+        case 0x12:
+        case 0x13:
+            if (addr <= 0x1FFF)
+            {
+                ram_enabled = ((data & 0x0F) == 0xA);
+            }
+
+            else if (addr <= 0x3FFF)
+            {
+                if (data == 0)
+                {
+                    data = 1;
+                }
+                rom_bank = data & 0x7F;
+                rom_bank_offset = (rom_bank - 1) * 0x4000 % rom_length;
+            }
+
+            else if (addr <= 0x5fff)
+            {
+                if (data < 8)
+                {
+                    ram_bank = data;
+                    ram_bank_offset = ram_bank * 0x2000 - 0xA000;
+                }
+            }
+        
+            break;
+
+        case 0x19:
+        case 0x1A:
+        case 0x1B:
+            if (addr <= 0x1FFF)
+            {
+                ram_enabled = ((data & 0x0F) == 0xA);
+            }
+
+            else if (addr <= 0x2FFF)
+            {
+                rom_bank &= 0x100;
+                rom_bank |= data;
+                rom_bank = (rom_bank - 1) * 0x4000;
+                while (rom_bank > rom_length)
+                {
+                    rom_bank_offset -= rom_length;
+                }
+            }
+        
+            else if (addr <= 0x3FFF)
+            {
+                rom_bank &= 0xFF;
+                if (data & 1)
+                {
+                    rom_bank += 0x100;
+                }
+
+                rom_bank_offset = (rom_bank - 1) * 0x4000;
+                while (rom_bank_offset > rom_length)
+                {
+                    rom_bank_offset -= rom_length;
+                }
+                
+            }
+
+            else if (addr <= 0x5fff)
+            {
+                ram_bank = data & 0x0F;
                 ram_bank_offset = ram_bank * 0x2000 - 0xA000;
             }
-        }
-        else
-        {
-            MBCRamMode = data&1;
-            if (MBCRamMode == 0)
-            {
-                ram_bank=0;
-                ram_bank_offset = ram_bank * 0x2000 - 0xA000;
-            }
-            else
-            {
-                rom_bank &= 0x1F;
-                rom_bank_offset = (rom_bank - 1) * 0x4000  % rom_length;
-            }
-        }
+        
         break;
+
+        default:
+            // pass
     }
 }
 
@@ -827,7 +924,7 @@ int pop(int a, int b)
     return 12;
 }
 
-void opcodes(int opcode)
+void cpu(int opcode)
 {
     if (opcode == 0x00)
     {
@@ -846,5 +943,3 @@ void opcodes(int opcode)
         inc16(B,C);
     }
 }
-
-#endif
