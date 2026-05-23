@@ -1,9 +1,9 @@
 App(
-    appid="foobar",
-    name="Foobar GB",
+    appid="foobargb",
+    name="FoobarGB",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="main",
-    fap_description="Foobar GB is an experimental gb emulator",
+    fap_description="FoobarGB is an experimental gameboy emulator",
     fap_author="Invizabel",
     fap_weburl="https://github.com/Invizabel/foobar",
     fap_icon="assets/icon.png",
