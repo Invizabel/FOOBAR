@@ -1,0 +1,12 @@
+App(
+    appid="flippergb",
+    name="FlipperGB",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="main",
+    fap_description="FlipperGB is an experimental gameboy emulator",
+    fap_author="Invizabel",
+    fap_weburl="https://github.com/Invizabel/FlipperGB",
+    fap_icon="assets/icon.png",
+    fap_category="Games",
+    fap_version="1.0"
+)
