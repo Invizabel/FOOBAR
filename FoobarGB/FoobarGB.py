@@ -27,6 +27,39 @@ joypad_buttons = 0xdf # 0 = pressed
 keys_dpad = 0xef # 0 = pressed
 keys_buttons = 0xdf # 0 = pressed
 
+REG = []
+
+FLAGS = {
+    "Z": False,
+    "N": False,
+    "H": False,
+    "C": False,
+}
+
+PC = 0
+
+SP = 0
+
+IME = False # Interrupt master enable
+cpu_halted = False
+
+A = 0b111
+B = 0b000
+C = 0b001
+D = 0b010
+E = 0b011
+H = 0b100
+L = 0b101
+
+HL = 0b110
+
+Immediate = 257
+BC = 258
+DE = 259
+SPr = 260
+
+opcodes = []
+
 def readMem(addr):
     if addr <= 0x3fff:
         return ROM[addr]
@@ -54,11 +87,6 @@ def readMem16(addr):
     return [readMem(addr + 1), readMem(addr)]
 
 def  writeMem(addr, data):
-    global MEM
-    global timerEnable
-    global timerPrescaler
-    global SoundEnabled
-    global LCD_scan
 
     if addr <= 0x7fff: 
         doMBC(addr, data)
@@ -386,17 +414,16 @@ def writeMem16(addr, dataH, dataL):
     writeMem(addr + 1, dataH)
 
 def doMBC(addr, data):
-  global RAMenabled
-  global ROMbankoffset
-  global RAMbankoffset
+    global RAMenabled
+    global ROMbankoffset
+    global RAMbankoffset
   
-  match ROM[0x147]:
     # Cartridge Type = ROM[0x147]
-    case 0: # ROM ONLY
+    if ROM[0x147] == 0: # ROM ONLY
         # do any type 0 carts have switchable ram?
         pass
     
-    case 0x01 | 0x02 | 0x03:
+    elif ROM[0x147] == 0x01 | ROM[0x147] == 0x02 | ROM[0x147] == 0x03:
         if addr <= 0x1FFF:
             RAMenabled = ((data & 0x0F) == 0xA)
 
@@ -426,7 +453,7 @@ def doMBC(addr, data):
                 ROMbank &= 0x1F
                 ROMbankoffset = (ROMbank - 1) * 0x4000  % len(ROM)
 
-    case 0x05 | 0x06:
+    elif ROM[0x147] == 0x05 | ROM[0x147] == 0x06:
         if addr <= 0x1FFF:
             if (addr & 0x0100) == 0:
                 RAMenabled = ((data & 0x0F) == 0xA) 
@@ -445,7 +472,7 @@ def doMBC(addr, data):
     # case 0x0D: #  MMM01+RAM+BATTERY
     # case 0x0F: #  MBC3+TIMER+BATTERY
     # case 0x10: #  MBC3+TIMER+RAM+BATTERY
-    case 0x11 | 0x12 | 0x13:
+    elif ROM[0x147] == 0x11 | ROM[0x147] == 0x12 | ROM[0x147] == 0x13:
         if addr <= 0x1FFF:
             RAMenabled = ((data & 0x0F) == 0xA)
         elif addr <= 0x3FFF:
@@ -461,5 +488,145 @@ def doMBC(addr, data):
                 # RTC registers here
                 pass
         else:
-            # RTC registers here
+            # RTC latch
             pass
+
+    elif ROM[0x147] == 0x19 | ROM[0x147] == 0x1A | ROM[0x147] == 0x1B:
+        if addr <= 0x1FFF:
+            RAMenabled = ((data & 0x0F) == 0xA)
+
+        elif addr <= 0x2FFF:
+            # Allows access to bank 0
+            ROMbank &= 0x100
+            ROMbank |= data
+            ROMbankoffset = (ROMbank - 1) * 0x4000
+            while ROMbankoffset > len(rom):
+                ROMbankoffset -= len(rom)
+            
+        elif addr <= 0x3FFF:
+            ROMbank &= 0xFF
+            if data & 1:
+                ROMbank += 0x100
+            
+            ROMbankoffset = (ROMbank - 1) * 0x4000
+            while ROMbankoffset > len(ROM):
+                ROMbankoffset -= len(ROM)
+
+        elif addr <= 0x5fff:
+            RAMbank = data & 0x0F
+            RAMbankoffset = RAMbank * 0x2000 - 0xA000
+
+    else:
+        raise NotImplementedError("Unimplemented memory controller")
+      
+def resetSoundRegisters():
+   MEM[0xFF10] = 0x80 # NR10
+   MEM[0xFF11] = 0xBF # NR11
+   MEM[0xFF12] = 0xF3 # NR12
+   MEM[0xFF13] = 0
+   MEM[0xFF14] = 0xBF # NR14
+   MEM[0xFF15] = 0xFF # NA
+   MEM[0xFF16] = 0x3F # NR21
+   MEM[0xFF17] = 0x00 #  NR22
+   MEM[0xFF18] = 0
+   MEM[0xFF19] = 0xBF # NR24
+   MEM[0xFF1A] = 0x7F # NR30
+   MEM[0xFF1B] = 0xFF # NR31
+   MEM[0xFF1C] = 0x9F # NR32
+   MEM[0xFF1D] = 0
+   MEM[0xFF1E] = 0xBF # NR33
+   MEM[0xFF1F] = 0xFF # NA
+   MEM[0xFF20] = 0xFF # NR41
+   MEM[0xFF21] = 0x00 # NR42
+   MEM[0xFF22] = 0x00 # NR43
+   MEM[0xFF23] = 0xBF # NR30
+   MEM[0xFF24] = 0x77 # NR50
+   writeMem(0xFF25,0xF3) # NR51
+   MEM[0xFF26] = 0xF1 # NR52
+
+def ld(a,b):
+    if b == Immediate:
+        REG[a] = readMem(PC + 1)
+        PC += 2
+        return 8
+
+    REG[a] = REG[b]
+    PC += 1
+    return 4
+
+def ld_from_mem(a, b, c):
+    if b == Immediate:
+        REG[a] = readMem(readMem(PC + 1) + (readMem(PC + 2) << 8))
+        PC += 3
+        return 16
+
+    REG[a] = readMem((REG[b] << 8) + REG[c])
+    PC += 1
+    return 8
+
+def ld_to_mem(a, b, c):
+    if a == Immediate:
+        writeMem(readMem(PC + 1) + (readMem(PC + 2) << 8), REG[b])
+        PC += 3
+        return 16
+    
+    if c == Immediate:
+        writeMem((REG[a] << 8) + REG[b], readMem(PC + 1))
+        PC += 2
+        return 12
+    
+    writeMem((REG[a] << 8) + REG[b], REG[c])
+    PC += 1
+    return 8
+
+def ld16(a, b, c):
+    global SP
+
+    if b == Immediate:
+        if (a == HL):
+            # mem to hl
+            s = readMem16(readMem(PC + 1) + (readMem(PC + 2 ) <<8 ))
+
+            REG[H] = s[0]
+            REG[L] = s[1]
+
+            PC += 3
+            return 12
+
+        # immediate into SP... 
+        SP = readMem(PC + 1) + (readMem(PC + 2) << 8)
+        PC += 3
+        return 12
+
+    if c == Immediate:
+        REG[a] = readMem( PC+2 )
+        REG[b] = readMem( PC+1 )
+
+        PC += 3
+        return 12
+
+    # ld sp, hl
+    SP = (REG[H] << 8) + REG[L]
+    PC += 1
+    return 8
+
+def ldd(a, b):
+    if a == HL:
+        writeMem((REG[H] << 8) + REG[L], REG[A])
+
+        if REG[L] == 0:
+            REG[H] -= 1
+        REG[L] -= 1
+
+        PC += 1
+        return 8
+
+    REG[A] = readMem((REG[H] << 8) + REG[L])
+
+    if (REG[L]==0):
+        REG[H] -= 1
+    
+    REG[L] -= 1
+
+    PC += 1
+    return 8
