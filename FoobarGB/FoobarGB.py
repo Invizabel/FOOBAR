@@ -60,6 +60,15 @@ SPr = 260
 
 opcodes = []
 
+ADD = 1
+ADC = 2
+SUB = 3
+SBC = 4
+AND = 5
+OR  = 6
+XOR = 7
+CP  = 8
+
 def readMem(addr):
     if addr <= 0x3fff:
         return ROM[addr]
@@ -630,3 +639,196 @@ def ldd(a, b):
 
     PC += 1
     return 8
+
+def ldi(a, b):
+    if a == HL:
+        writeMem((REG[H] << 8) + REG[L], REG[A])
+        if (REG[L] == 255):
+            REG[H] += 1
+        
+        REG[L] += 1
+        
+        PC += 1
+        return 8
+    
+    REG[A] =  readMem((REG[H] << 8) + REG[L])
+    if REG[L] == 255:
+        REG[H] += 1
+    
+    REG[L] += 1
+
+    PC += 1
+    return 8
+
+def ldc(a, b):
+    if a == A:
+        REG[A] = readMem(0xFF00 + REG[C])
+        P += 1
+        return 8
+    
+    writeMem(0xFF00 + REG[C], REG[A])
+    PC += 1
+    return 8
+
+def ldh(a, b):
+    if a == A:
+        REG[A] = readMem(0xFF00 + readMem(PC + 1))
+        PC += 2
+        return 12
+
+    writeMem(0xFF00 + readMem(PC + 1), REG[A])
+    PC += 2
+    return 12
+
+def ALU(op, a, b):
+    if b == Immediate:
+        REG[A] = ALU_process_8bit(op, readMem(PC + 1))
+        PC += 2
+        return 8
+
+    if b == HL:
+        REG[A] = ALU_process_8bit(op, readMem((REG[H] << 8) + REG[L]))
+        PC += 1
+        return 8
+    
+    REG[A] = ALU_process_8bit(op, REG[b])
+    PC += 1
+    return 4
+
+def ALU_process_8bit(op, b):
+    result = REG[A]
+    FLAGS["N"] = False
+    if (op):
+        if op == ADD:
+            FLAGS["H"] == bool((((REG[A] & 0x0F) + (b & 0x0F)) & 0x10))
+            result += B
+
+        elif op == ADC:
+            FLAGS.H = bool(((REG[A] & 0x0F) + (b & 0x0F) + FLAGS["C"]) & 0x10)
+            result += b + FLAGS["C"]
+
+        elif op == SUB:
+            result -= B
+            FLAGS["N"] = True
+            FLAGS["H"] = bool(((REG[A] & 0x0F) - (b & 0x0F)) & 0x10)
+
+        elif op == CP:
+            result -= b
+            FLAGS["N"] = True
+            FLAGS["H"] = bool(((REG[A] & 0x0F) - (b & 0x0F)) & 0x10)
+            FLAGS["Z"] = ((result & 0xff) == 0)
+            FLAGS["C"] = result > 255 or result < 0
+
+        elif op == SBC:
+            result -= b + FLAGS["C"]
+            FLAGS["N"] = True
+            FLAGS["H"] = bool(((REG[A] & 0x0F) - (b & 0x0F) - FLAGS["C"]) & 0x10)
+
+        elif op == AND:
+            result &= b
+            FLAGS["H"] = True
+
+        elif op == OR:
+            result |= b
+            FLAGS["H"] = False
+
+        elif op == XOR:
+            result ^= b
+            FLAGS["H"] = False
+
+    FLAGS["Z"] = ((result & 0xff) == 0)
+    FLAGS["C"] = result > 255 or result < 0
+
+    return result & 0xFF
+
+def inc(a):
+    return incdec(a, 1)
+
+def dec(a):
+    return incdec(a, -1)
+
+def incdec(r, offset):
+    if r == HL:
+        writeMem((REG[H] << 8) + REG[L], incdec_process_8bit(readMem((REG[H] << 8) + REG[L]), offset))
+        PC += 1
+        return 12
+
+    REG[r] = incdec_process_8bit(REG[r], offset)
+    PC += 1
+    return 4
+
+def incdec_process_8bit(a, offset):
+    result = a + offset
+    FLAGS["H"] = bool(((a & 0x0F) + offset) & 0x10)
+    FLAGS["N"] = offset == -1
+    FLAGS["Z"] = ((result & 0xff) == 0)
+    return result
+
+def inc16(a, b):
+    if a == SPr:
+        SP += 1
+        PC += 1
+        return 8
+    
+    if REG[b] == 255:
+        REG[a] += 1
+    
+    REG[b] += 1
+    PC += 1
+    return 8
+
+def dec16(a, b):
+    if a == SPr
+        SP -= 1
+        PC += 1
+        return 8
+        
+    if (REG[b] == 0):
+        REG[a] -= 1
+    
+    REG[b] -= 1
+    PC += 1
+    return 8
+
+def signedOffset(b):
+    return (b - 256) if b > 127 else b
+
+def jrNZ():
+    if FLAGS["Z"]:
+        PC += 2
+        return 8
+    
+    PC += 2 + signedOffset(readMem(PC + 1))
+    return 12
+
+def jrNC():
+    if FLAGS["C"]:
+        PC += 2
+        return 8
+    
+    PC += 2 + signedOffset(readMem(PC + 1))
+    return 12
+
+def jrZ():
+    if not FLAGS["Z"]:
+        PC += 2
+        return 8
+
+    PC += 2 + signedOffset(readMem(PC + 1))
+    return 12
+
+def jrC():
+    if not FLAGS["C"]:
+        PC += 2
+        return 8
+
+    PC += 2 + signedOffset(readMem(PC + 1))
+    return 12
+
+def jr():
+    PC += 2 + signedOffset(readMem(PC + 1))
+    return 12
+
+def jp():
+    PC = readMem(PC + 1) + (readMem(PC + 2) << 8)
+    return 16
